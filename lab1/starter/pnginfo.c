@@ -1,16 +1,11 @@
-#include <stdio.h>                  /* printf needs to include this header file */
+#include <stdio.h>	            /* printf needs to include this header file */
 #include <stdlib.h>             /* for malloc()                */
 #include <errno.h>              /* for errno                   */
 #include <string.h>             /* for strcpy                  */
-#include <math.h>
-//#include "png_util/zutil.c"     /* for mem_def() and mem_inf() */
 #include "png_util/crc.c"       /* for crc()                   */
 #include "png_util/lab_png.h"   /* simple PNG data structures  */
-// #include "ls/ls_fname.c"
-// #include "ls/ls_ftype.c"
 
-#define BUFFER_LENGTH 255
-
+/* Function to calculate values because the one from math.h doesn't work */
 int power(int base, int exp){
     int i = 1;
     int result = 1;
@@ -20,89 +15,75 @@ int power(int base, int exp){
     return result;
 }
 
+/* Used with power() to calculate values from buffer */
 U32 getValue(unsigned char *buf, int base, int start, int end){
     int retVal = 0;
-    int exp = 0;
+    int exp = end - start - 1;
 
-    for(int i = start; i > end; i--){
+    for(int i = start; i < end; i++){
         retVal += buf[i] * power(base, exp);
-        exp++;
-        printf("%x ", buf[i]);
+        exp--;
     }
-    printf("\n");
     return retVal;
 }
 
-int main(int argc, char *argv[])
-{
-    int i;
+/* Looks at file size to see how much space needs to be allocated to buffer */
+U32 getBufferSize(U8 *path){
+    FILE *png = fopen(path, "rb");
+    if(png == NULL){
+            printf("couldnt find png\n");
+            return -1;
+    }
 
+    fseek(png, 0L, SEEK_END);
+    return ftell(png);
+}
+
+/* Checks if the file's header matches that of a png */
+int is_png(U8 *buf){
+    U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    U8 header[8];
+    for(int i = 0; i < 8; i++){
+        header[i] = buf[i];
+    }
+    return !memcmp(signature, header, sizeof(signature));
+}
+
+int get_png_width(struct chunk *ihdr){
+    return getValue(ihdr->p_data, 256, 0, 4);
+}
+
+int get_png_height(struct chunk *ihdr){
+    return getValue(ihdr->p_data, 256, 4, 8);
+}
+
+int main(int argc, char *argv[]){
     /* Get path for png */
     if (argc == 1) {
         printf("Usage: %s png_file\n", argv[0]);
         return -1;
     }
 
-
     U8 pngPath[255];
     strcpy(pngPath, argv[1]);
 
-    printf("%s\n", pngPath);
-
-    U8 buffer[BUFFER_LENGTH];
-    U8 header[8];
-    memset(buffer, 0, BUFFER_LENGTH);
-                                                                                                                                                                                                 
     /* Open png */
-    FILE *png = fopen(pngPath, "rt");
+    FILE *png = fopen(pngPath, "rb");
     if(png == NULL){
             printf("couldnt find png\n");
             return -1;
     }
 
-    /* Read png into buffer */
-    fread(buffer, sizeof(buffer), 1, png);
-
-    U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
-    int isPNG;
-
-    /* Check header for png signature */
+    U32 buffer_size = getBufferSize(pngPath);
+    U8 buffer[buffer_size];
+    U8 header[8];
     for(int i = 0; i < 8; i++){
         header[i] = buffer[i];
     }
-    if (isPNG = !memcmp(signature, header, sizeof(signature))){
-        printf("this is a png\n");
-    }
-    printf("%d\n", isPNG);
+    memset(buffer, 0, buffer_size);
 
-    data_IHDR_p ihdr_data = malloc(sizeof(data_IHDR_p));
-
-    /* Width = 16 - 19; height = 20 - 23 */
-    int width, height, exp = 0;
-    int base = 256;
-
-    U8 ihdr_type[4];
-    int index = 0;
-    for(int i = 13; i < 17; i++, index++){
-           ihdr_type[index] = buffer[i];
-    }
-
-    chunk_p ihdr = malloc(sizeof(chunk_p));
-    ihdr->length = getValue(buffer, base, 12, 8);
-    memcpy(ihdr->type, ihdr_type, sizeof(ihdr_type));
-    ihdr->p_data = &buffer[18];
-
-
-    width = getValue(buffer, base, 19, 15);
-    height = getValue(buffer, base, 23, 19);
-
-    ihdr_data->width = width;
-    ihdr_data->height = height;
-    ihdr_data->bit_depth = buffer[24];
-    ihdr_data->color_type = buffer[25];
-    ihdr_data->compression = buffer[26];
-    ihdr_data->filter = buffer[27];
-    ihdr_data->interlace = buffer[28];
+    /* Read png into buffer */
+    fread(buffer, sizeof(buffer), 1, png);
 
     /* Get file name as path */
     char *pngName = pngPath;
@@ -115,81 +96,127 @@ int main(int argc, char *argv[])
         ssc = strstr(pngName, "/");
     }while(ssc);
 
-    U32 ihdr_crc = getValue(buffer, base, 32, 28);
-    // printf("%d\n", crc_val);
+    int isPNG = is_png(buffer);
+    if (!isPNG){
+        printf("%s: NOT a PNG file\n", pngName);
+        return -1;
+    }
+
+    data_IHDR_p ihdr_data = malloc(sizeof(data_IHDR_p));
+    chunk_p ihdr = malloc(sizeof(chunk_p));
+    chunk_p idat = malloc(sizeof(chunk_p));
+    chunk_p iend = malloc(sizeof(chunk_p));
+
+    /* Since each index consists of 2 hex characters: 16 * 16 = 256 */
+    int base = 256;
+
+    /* Getting values for ihdr chunk */
+    int ihdr_start = 8;
+    U8 ihdr_type[4];
+    U32 ihdr_length = getValue(buffer, base, ihdr_start, ihdr_start + 4);
+    int index = 0;
+    /* ihdr type bytes should be 12 to 15 always */
+    for(int i = ihdr_start + 4; i < ihdr_start + 8; i++, index++){
+        ihdr_type[index] = buffer[i];
+    }
+    U32 ihdr_crc = getValue(buffer, base, ihdr_start + ihdr_length + 8, ihdr_start + ihdr_length + 12);
+
+    /* Getting values for idat chunk */
+    int idat_start = ihdr_start + ihdr_length + 12;
+    U8 idat_type[4];
+    U32 idat_length = getValue(buffer, base, idat_start, idat_start + 4);
+    index = 0;
+    for(int i = idat_start + 4; i < idat_start + 8; i++, index++){
+        idat_type[index] = buffer[i];
+    }
+    U32 idat_crc = getValue(buffer, base, idat_start + idat_length + 8, idat_start + idat_length + 12);
+
+    /* Getting values for iend chunk */
+    int iend_start = idat_start + idat_length + 12;
+    U8 iend_type[4];
+    U32 iend_length = getValue(buffer, base, iend_start, iend_start + 4);
+    index = 0; 
+    for(int i = iend_start + 4; i < iend_start + 8; i++, index++){
+        iend_type[index] = buffer[i];
+    }
+    U32 iend_crc = getValue(buffer, base, iend_start + 8, iend_start + 12);
+
+    ihdr->length = ihdr_length;
+    memcpy(ihdr->type, ihdr_type, sizeof(ihdr_type));
+    ihdr->p_data = &buffer[ihdr_start + 8];
     ihdr->crc = ihdr_crc;
 
-    U32 IDAT_length = getValue(buffer, base, 36, 32);
-
-    printf("IDAT length: %d\n", IDAT_length);
-
-    U8 idat_type[4];
-    index = 0;
-    for(int i = 37; i < 41; i++, index++){
-            idat_type[index] = buffer[i];
-    }
-
-    chunk_p idat = malloc(sizeof(chunk_p));
-    idat->length = IDAT_length;
+    idat->length = idat_length;
     memcpy(idat->type, idat_type, sizeof(idat_type));
-    idat->p_data = &buffer[42];
+    idat->p_data = &buffer[idat_start + 8];
+    idat->crc = idat_crc;
 
-    //36 + IDAT_length + 8:
-    //36: start of IDAT
-    //IDAT_LENGTH: length of data
-    //8: to skip over length and type bytes
-    U32 IDAT_crc = getValue(buffer, base, 36 + IDAT_length + 8, 32 + IDAT_length + 8);
-    idat->crc = IDAT_crc;
-
-    U8 iend_type[4];
-    for(int i = 46 + IDAT_length; i < 50 + IDAT_length; i++, index++){
-            iend_type[index] = buffer[i];
-    }
-    chunk_p iend = malloc(sizeof(chunk_p));
-    iend->length = 0;
+    iend->length = iend_length;
     memcpy(iend->type, iend_type, sizeof(iend_type));
     iend->p_data = NULL;
+    iend->crc = iend_crc;
 
-    U32 IEND_crc = getValue(buffer, base, 54 + IDAT_length, 50 + IDAT_length);
-    iend->crc = IEND_crc;
+    int width, height= 0;
 
-    U8 *ihdr_buf = malloc(sizeof(ihdr->type) + sizeof(*ihdr->p_data));
-    U8 *idat_buf = malloc(sizeof(idat->type) + sizeof(*idat->p_data));
-    U8 *iend_buf = malloc(sizeof(iend->type));
+    width = get_png_width(ihdr);
+    height = get_png_height(ihdr);
 
-    memcpy(ihdr_buf, ihdr->type, 4 * sizeof(U8));
-    memcpy(ihdr_buf + 4 * sizeof(U8), ihdr->p_data, ihdr->length * sizeof(U8));
+    ihdr_data->width = width;
+    ihdr_data->height = height;
+    ihdr_data->bit_depth = buffer[24];
+    ihdr_data->color_type = buffer[25];
+    ihdr_data->compression = buffer[26];
+    ihdr_data->filter = buffer[27];
+    ihdr_data->interlace = buffer[28];
 
-    memcpy(idat_buf, idat->type, 4 * sizeof(U8));
-    memcpy(idat_buf + 4 * sizeof(U8), idat->p_data, idat->length * sizeof(U8));
 
-    memcpy(iend_buf, iend->type, 4 * sizeof(U8));
-    memcpy(iend_buf + 4 * sizeof(U8), iend->p_data, iend->length * sizeof(U8));
+    U8 *ihdr_buf = malloc(4 + ihdr->length);
+    U8 *idat_buf = malloc(4 + idat->length);
+    U8 *iend_buf = malloc(4);
 
+    for(int i = 0; i < 4; i++){
+           ihdr_buf[i] = ihdr->type[i];
+           idat_buf[i] = idat->type[i];
+           iend_buf[i] = iend->type[i];
+    }
+    index = 0;
+    for(int i = 4; i < 4 + ihdr->length; i++, index++){
+           ihdr_buf[i] = ihdr->p_data[index];
+    }
+    index = 0;
+    for(int i = 4; i < 4 + idat->length; i++, index++){
+           idat_buf[i] = idat->p_data[index];
+    }
 
     U32 ihdr_crc_calc = crc(ihdr_buf, 4 + ihdr->length);
     U32 idat_crc_calc = crc(idat_buf, 4 + idat->length);
-    U32 iend_crc_calc = crc(iend_buf, 4 + iend->length);
+    U32 iend_crc_calc = crc(iend_buf, 4);
 
-    printf("%x, %x, %x\n", ihdr_crc_calc, idat_crc_calc, iend_crc_calc);
-    printf("%x, %x, %x\n", ihdr->crc, idat->crc, iend->crc);
-
-    /* On success */
     if(isPNG){
         printf("%s: %d x %d\n", pngName, width, height);
-        /*
-        if(!crc_val){
-            printf("IDAT chunk CRC error: computed %s, expected %s\n", "test", "test");
+        if(ihdr_crc_calc != ihdr->crc){
+            printf("IHDR chunk CRC error: computed %x, expected %x\n", ihdr_crc_calc, ihdr->crc);
         }
-        */
+        if(idat_crc_calc != idat->crc){
+            printf("IDAT chunk CRC error: computed %x, expected %x\n", idat_crc_calc, idat->crc);
+        }
+        if(iend_crc_calc != iend->crc){
+            printf("IEND chunk CRC error: computed %x, expected %x\n", iend_crc_calc, iend->crc);
+        }
     }
     else{
         printf("%s: NOT a PNG file\n", pngName);
     }
 
-    printf("%x\n", buffer[47]);
+    free(ihdr_data);
+    free(ihdr);
+    free(idat);
+    free(iend);
+
+    free(ihdr_buf);
+    free(idat_buf);
+    free(iend_buf);
+
+    fclose(png);
     return 0;
 }
-
-
-

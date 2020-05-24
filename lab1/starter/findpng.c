@@ -21,7 +21,6 @@ int main(int argc, char *argv[]) {
 
     U8 path[255];
 
-
     strcpy(path, argv[1]);
     listFilesRecursively(path);
 

@@ -9,7 +9,7 @@
 
 #define BUFFER_LENGTH 255
 
-void listFilesRecursively(char *path);
+int listFilesRecursively(char *path);
 
 
 int main(int argc, char *argv[]) {
@@ -22,7 +22,14 @@ int main(int argc, char *argv[]) {
     U8 path[255];
 
     strcpy(path, argv[1]);
-    listFilesRecursively(path);
+    int numFiles = listFilesRecursively(path);
+    if (numFiles == 0){
+    	printf("findpng: No PNG file found\n");
+    }
+    else if (numFiles == -1){
+	printf("Not a directory\n");
+    }
+	
 
     return 0;
 }
@@ -33,15 +40,15 @@ int main(int argc, char *argv[]) {
  * considering path as base path.
  */
  
-void listFilesRecursively(char *basePath){
-
+int listFilesRecursively(char *basePath){
+    int filesFound = 0;
     char path[1000];
     struct dirent *dp;
     DIR *dir = opendir(basePath);
 
     // Unable to open directory stream
     if (!dir){
-        return;
+        return -1;
 	}
 	
 	U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
@@ -70,6 +77,7 @@ void listFilesRecursively(char *basePath){
 				}
 				if (isPNG = !memcmp(signature, header, sizeof(signature))){
 					printf("%s\n", dp->d_name);
+					filesFound++;
 				}		
 			}
           
@@ -83,6 +91,7 @@ void listFilesRecursively(char *basePath){
     }
 
     closedir(dir);
+    return filesFound;
 }
 
 

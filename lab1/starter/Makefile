@@ -1,28 +1,25 @@
 CC = gcc       # compiler
-CFLAGS = -Wall -g -std=c99 # compilation flags
 LD = gcc       # linker
-LDFLAGS = -g   # debugging symbols in build
+CFLAGS = -Wall -g -std=c99 # compilation flags
 LDLIBS = -lz   # link with libz
 
-# For students 
-LIB_UTIL = png_util/zutil.o png_util/crc.o
-SRCS   = catpng.c crc.c zutil.c
-OBJS   = catpng.o $(LIB_UTIL) 
+LIB_UTIL = ./png_util/zutil.c ./png_util/crc.c 
 
-//TARGETS= catpng.out
+TARGETS = catpng pnginfo findpng
+
+default: all
 
 all: ${TARGETS}
 
-catpng.out: $(OBJS) 
-	$(LD) -o $@ $^ $(LDLIBS) $(LDFLAGS) 
+catpng: catpng.c $(LIB_UTIL)
+	$(LD) -o $@ $^ $(LDLIBS) 
 
-%.o: %.c 
-	$(CC) $(CFLAGS) -c $< 
+pnginfo: pnginfo.c 
+	$(LD) -o $@ $^ 
 
-%.d: %.c
-	gcc -MM -MF $@ $<
+findpng: findpng.c 
+	$(LD) -o $@ $^
 
--include $(SRCS:.c=.d)
 
 .PHONY: clean
 clean:

@@ -33,8 +33,7 @@ U32 getValue(unsigned char *buf, int base, int start, int end){
 U32 getBufferSize(U8 *path){
     FILE *png = fopen(path, "rb");
     if(png == NULL){
-            printf("couldnt find png\n");
-            return -1;
+        return -1;
     }
 
     fseek(png, 0L, SEEK_END);

@@ -139,6 +139,7 @@ simple_PNG_p createPNG(U8 *path){
         buf[i] = buffer[i];
     }
 
+
     // retVal->buffer = buf;
     retVal->p_IHDR = ihdr;
     retVal->p_IDAT = idat;
@@ -291,6 +292,19 @@ int main(int argc, char *argv[]){
     fwrite(concat_png, 1, sizeof(concat_png), fp);
 
     fclose(fp);
-
+	
+	//deallocating memory
+	free(new_height);
+	free(final_buffer);
+	free(buf);
+	free(buffer);
+	free(cat);
+	free(ihdr_buf);
+	free(idat_buf);
+	free(iend_buf);
+	free(new_ihdr_data);
+	
+	free(pngs);
+	
     return 0;
 }

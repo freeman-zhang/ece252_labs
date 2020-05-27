@@ -129,6 +129,7 @@ simple_PNG_p createPNG(U8 *path){
     for(int i = 0; i < buffer_size; i++){
         buf[i] = buffer[i];
     }
+	free(buffer);
 
     retVal->p_IHDR = ihdr;
     retVal->p_IDAT = idat;
@@ -251,6 +252,12 @@ int main(int argc, char *argv[]){
     free(ihdr_buf);
     free(idat_buf);
     free(iend_buf);
+	
+	free(buffer);
+	free(buf);
+	free(ihdr);
+	free(idat);
+	free(iend);
 
     fclose(pngCheck);
     return 0;

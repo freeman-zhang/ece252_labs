@@ -21,6 +21,7 @@
 #define CHUNK_TYPE_SIZE 4 /* chunk type field size in bytes */
 #define CHUNK_CRC_SIZE  4 /* chunk CRC field size in bytes */
 #define DATA_IHDR_SIZE 13 /* IHDR chunk data field size */
+#define BASE 256
 
 /******************************************************************************
  * STRUCTURES and TYPEDEFS 
@@ -69,5 +70,9 @@ int get_png_data_IHDR(struct data_IHDR *out, FILE *fp, long offset, int whence);
 int power(int base, int exp);
 U32 getValue(unsigned char *buf, int base, int start, int end);
 U32 getBufferSize(U8 *path);
+void freePNG(simple_PNG_p png);
+U8 * insertValue(U32 value, int size);
+simple_PNG_p createPNG(U8 *path);
+
 
 /* declare your own functions prototypes here */

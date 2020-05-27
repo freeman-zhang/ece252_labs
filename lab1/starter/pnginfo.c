@@ -65,13 +65,15 @@ simple_PNG_p createPNG(U8 *path){
     U8* buffer = malloc(buffer_size);
     FILE *png = fopen(path, "rb");
     if(png == NULL){
-        return NULL;
+        retVal->errCode = -1;
+        return retVal;
     }
     memset(buffer, 0, buffer_size);
     fread(buffer, buffer_size, 1, png);
     int isPNG = is_png(buffer);
     if(!isPNG){
-        return NULL;
+        retVal->errCode = -2;
+        return retVal;
     }
 
     chunk_p ihdr = malloc(sizeof(struct chunk));
@@ -146,9 +148,9 @@ int main(int argc, char *argv[]){
     }
 
     simple_PNG_p png = createPNG(argv[1]);
-    if(!png){
+    if(png->errCode == -1){
         printf("Could not find PNG\n");
-	return -1;
+        return -1;
     }
     
     U8 pngPath[255];
@@ -160,7 +162,6 @@ int main(int argc, char *argv[]){
     }
     memset(buffer, 0, 8);
     fread(buffer, 8, 1, pngCheck);
-    int isPNG = is_png(buffer);
     
     /* Get file name as path */
     char *pngName = pngPath;
@@ -178,7 +179,7 @@ int main(int argc, char *argv[]){
         pngName = pngPath;
     }
 
-    if(!isPNG){
+    if(png->errCode == -2){
         printf("%s: NOT a PNG file\n", pngName);
         return -1;
     }

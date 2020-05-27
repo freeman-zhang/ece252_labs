@@ -56,6 +56,7 @@ typedef struct simple_PNG {
     struct chunk *p_IHDR;
     struct chunk *p_IDAT;  /* only handles one IDAT chunk */  
     struct chunk *p_IEND;
+    int errCode;
 } *simple_PNG_p;
 
 /******************************************************************************

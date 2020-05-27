@@ -139,11 +139,13 @@ simple_PNG_p createPNG(U8 *path){
         buf[i] = buffer[i];
     }
 
-
     // retVal->buffer = buf;
     retVal->p_IHDR = ihdr;
     retVal->p_IDAT = idat;
     retVal->p_IEND = iend;
+	
+	free(buf);
+	free(buffer);
 
     return retVal;
 }
@@ -296,8 +298,7 @@ int main(int argc, char *argv[]){
 	//deallocating memory
 	free(new_height);
 	free(final_buffer);
-	free(buf);
-	free(buffer);
+
 	free(cat);
 	free(ihdr_buf);
 	free(idat_buf);

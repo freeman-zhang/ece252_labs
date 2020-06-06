@@ -15,16 +15,6 @@
 #define num_pngs 50
 #define BUF_SIZE 1048576  /* 1024*1024 = 1M */
 
-size_t curl_header_cb(char *p_recv, size_t size, size_t nmeb, void *userdata){
-
-    return 0;
-}
-
-size_t curl_data_cb(char *p_recv, size_t size, size_t nmemb, void *p_userdata){
-
-    return 0;
-}
-
 int main(int argc, char **argv){
     int c;
     int num_threads = 1;
@@ -51,13 +41,11 @@ int main(int argc, char **argv){
             return -1;
         }
     }
-    // printf("%d, %d\n", num_threads, img_num);
     char url[100] = "http://ece252-1.uwaterloo.ca:2520/image?img=";
 	//string concatentation of the image number to the url
     char img_num_char[2];
     sprintf(img_num_char, "%d", img_num);
 	strcat(url, img_num_char);
-    // printf("after cat: %s\n", url);
 
     CURL *curl;
     CURLcode res;
@@ -65,46 +53,24 @@ int main(int argc, char **argv){
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
     RECV_BUF recv_buf;
-    recv_buf_init(&recv_buf, BUF_SIZE);
 
-    if(curl){
+    if(!curl){
+        fprintf(stderr, "curl_easy_init: returned NULL\n");
+        return -1;
+    }
+
+    simple_PNG_p pngs[num_pngs];
+    int image_received[num_pngs] = {0};
+    int num_found = 0;
+
+    while(num_found < 50){
+        recv_buf_init(&recv_buf, BUF_SIZE);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-    }
-    else{
-        fprintf(stderr, "curl_easy_init: returned NULL\n");
-        return 1;
-    }
-
-    printf("done\n");
-
-    simple_PNG_p pngs[num_pngs];
-    int image_received[num_pngs] = {0};
-    int num_found = 0;
-
-    // res = curl_easy_perform(curl);
-    // printf("1\n");
-    // pngs[0] = createPNG(recv_buf.buf, recv_buf.size);
-    // res = curl_easy_perform(curl);
-    // pngs[1] = createPNG(recv_buf.buf, recv_buf.size);
-    // printf("2\n");
-
-    // for(int i = 0; i < 4; i++){
-    //     printf("%x ", pngs[0]->p_IHDR->type[i]);
-    // }
-    // printf("\n%d ", pngs[0]->p_IHDR->length);
-    //NOTE: buf[0] is 2s complemented
-    // printf("\n");
-
-    // write_file(fname, recv_buf.buf, recv_buf.size);
-
-    // return 0;
-
-    while(num_found < 50){
         res = curl_easy_perform(curl);
         if(res == CURLE_OK){
             if(image_received[recv_buf.seq] == 1){
@@ -113,6 +79,18 @@ int main(int argc, char **argv){
             else{
                 printf("Found img %d\n", recv_buf.seq);
                 image_received[recv_buf.seq] = 1;
+                if(recv_buf.seq == 0){
+                    write_file("First", recv_buf.buf, recv_buf.size);
+                }
+                if(recv_buf.seq == 1){
+                    write_file("Second", recv_buf.buf, recv_buf.size);
+                }
+                if(recv_buf.seq == 2){
+                    write_file("Third", recv_buf.buf, recv_buf.size);
+                }
+                if(recv_buf.seq == 3){
+                    write_file("Fourth", recv_buf.buf, recv_buf.size);
+                }
                 pngs[recv_buf.seq] = createPNG(recv_buf.buf, recv_buf.size);
                 num_found++;
             }

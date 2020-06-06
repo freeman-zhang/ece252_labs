@@ -1,7 +1,7 @@
-CC = gcc       				# compiler
-LD = gcc       				# linker
-CFLAGS = -Wall -g -std=c99 	# compilation flags
-LDLIBS = -lz -lcurl       	# link with libz
+CC = gcc
+LD = gcc
+CFLAGS = -Wall -g -std=c99
+LDLIBS = -lz -lcurl
 
 LIB_UTIL = ./png_util/zutil.c ./png_util/crc.c ./png_util/lab_png.c ./cURL/curl_util.c
 

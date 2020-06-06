@@ -13,6 +13,7 @@
 #define final_height 300
 #define final_width 400
 #define num_pngs 50
+#define BUF_SIZE 1048576  /* 1024*1024 = 1M */
 
 size_t curl_header_cb(char *p_recv, size_t size, size_t nmeb, void *userdata){
 
@@ -51,50 +52,81 @@ int main(int argc, char **argv){
         }
     }
     // printf("%d, %d\n", num_threads, img_num);
-    char *url = "http://ece252-1.uwaterloo.ca:2520/image?img=";
+    char url[100] = "http://ece252-1.uwaterloo.ca:2520/image?img=";
 	//string concatentation of the image number to the url
-	strcat (url, img_num);
+    char img_num_char[2];
+    sprintf(img_num_char, "%d", img_num);
+	strcat(url, img_num_char);
+    // printf("after cat: %s\n", url);
 
     CURL *curl;
     CURLcode res;
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
+    RECV_BUF recv_buf;
+    recv_buf_init(&recv_buf, BUF_SIZE);
+
     if(curl){
         curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
-        
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    }
+    else{
+        fprintf(stderr, "curl_easy_init: returned NULL\n");
+        return 1;
+    }
+
+    printf("done\n");
+
+    simple_PNG_p pngs[num_pngs];
+    int image_received[num_pngs] = {0};
+    int num_found = 0;
+
+    // res = curl_easy_perform(curl);
+    // printf("1\n");
+    // pngs[0] = createPNG(recv_buf.buf, recv_buf.size);
+    // res = curl_easy_perform(curl);
+    // pngs[1] = createPNG(recv_buf.buf, recv_buf.size);
+    // printf("2\n");
+
+    // for(int i = 0; i < 4; i++){
+    //     printf("%x ", pngs[0]->p_IHDR->type[i]);
+    // }
+    // printf("\n%d ", pngs[0]->p_IHDR->length);
+    //NOTE: buf[0] is 2s complemented
+    // printf("\n");
+
+    // write_file(fname, recv_buf.buf, recv_buf.size);
+
+    // return 0;
+
+    while(num_found < 50){
         res = curl_easy_perform(curl);
+        if(res == CURLE_OK){
+            if(image_received[recv_buf.seq] == 1){
+                printf("Already got img %d\n", recv_buf.seq);
+            }
+            else{
+                printf("Found img %d\n", recv_buf.seq);
+                image_received[recv_buf.seq] = 1;
+                pngs[recv_buf.seq] = createPNG(recv_buf.buf, recv_buf.size);
+                num_found++;
+            }
+        }
+        else{
+            printf("ERROR: curl failed; aborting\n");
+            return -1;
+        }
     }
-    if(res != CURLE_OK){
-        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-    }
+
+    printf("done\n");
+    // return 0;
 	
-	//allocating memory for 50 uncompressed images
-	simple_PNG_p pngs[num_pngs];
-	
-	
-	int image_received[num_pngs] = {0};
-	int received_all = 0;
-	while (!received_all){
-		//receive compressed png and put it into pngs
-		
-		
-		
-		
-		
-		
-		//checking if we received all images
-		received_all = 1;
-		for (int i = 0; i < num_pngs; i++){
-			if (!image_received[i]){
-				received_all = 0;
-				break;
-			}
-		}
-	}
-	
-	int final_size = height * (width * 4 + 1);
+	int final_size = final_height * (final_width * 4 + 1);
     U8 *final_buffer = malloc(final_size);
     U64 output_length = 0;
     int ret = 0;
@@ -110,7 +142,7 @@ int main(int argc, char **argv){
         offset += output_length;
     }
 
-    int decompressed_size = height * (4 * width + 1);
+    int decompressed_size = final_height * (4 * final_width + 1);
     U8 *decompressed_buffer = malloc(decompressed_size);
     U64 new_size = 0;
 
@@ -130,7 +162,7 @@ int main(int argc, char **argv){
     U8 *idat_buf = malloc(4 + new_size);
     U8 *iend_buf = malloc(4);
 
-    U8 *new_height = insertValue(height, 4);
+    U8 *new_height = insertValue(final_height, 4);
     U8 *new_ihdr_data = malloc(DATA_IHDR_SIZE * sizeof(U8));
     memcpy(new_ihdr_data, decompressed_buffer + PNG_SIG_SIZE + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE, DATA_IHDR_SIZE * sizeof(U8));
     memcpy(new_ihdr_data + 4, new_height, 4 * sizeof(U8));

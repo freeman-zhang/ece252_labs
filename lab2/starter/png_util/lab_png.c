@@ -72,17 +72,8 @@ U8 *insertValue(U32 value, int size){
     return retVal;
 }
 
-simple_PNG_p createPNG(U8 *path){
+simple_PNG_p createPNG(U8 *buffer, U32 buffer_size){
     simple_PNG_p retVal = malloc(3 * sizeof(struct simple_PNG));
-    U32 buffer_size = getBufferSize(path);
-    U8* buffer = malloc(buffer_size);
-    FILE *png = fopen(path, "rb");
-    if(png == NULL){
-        retVal->errCode = -1;
-        return retVal;
-    }
-    memset(buffer, 0, buffer_size);
-    fread(buffer, buffer_size, 1, png);
     int isPNG = is_png(buffer);
     if(!isPNG){
         retVal->errCode = -2;
@@ -152,9 +143,7 @@ simple_PNG_p createPNG(U8 *path){
     retVal->p_IDAT = idat;
     retVal->p_IEND = iend;
 
-    free(buffer);
-
-    fclose(png);
+    // free(buffer);
 
     return retVal;
 }

@@ -72,7 +72,7 @@ U32 getValue(unsigned char *buf, int base, int start, int end);
 U32 getBufferSize(U8 *path);
 void freePNG(simple_PNG_p png);
 U8 * insertValue(U32 value, int size);
-simple_PNG_p createPNG(U8 *path);
+simple_PNG_p createPNG(U8 *buffer, U32 buffer_size);
 
 
 /* declare your own functions prototypes here */

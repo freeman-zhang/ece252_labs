@@ -20,7 +20,6 @@ volatile int num_found = 0;
 simple_PNG_p pngs[num_pngs] = {NULL};
 
 void * run(void * argument){
-    printf("Thread initiated\n");
     int* retVal = malloc(sizeof(int));
     CURL *curl;
     CURLcode res;
@@ -41,11 +40,7 @@ void * run(void * argument){
         recv_buf_init(&recv_buf, BUF_SIZE);
         res = curl_easy_perform(curl);
         if(res == CURLE_OK){
-            if(pngs[recv_buf.seq]){
-                printf("Already got img %d\n", recv_buf.seq);
-            }
-            else{
-                printf("Found img %d\n", recv_buf.seq);
+            if(!pngs[recv_buf.seq]){
                 pngs[recv_buf.seq] = createPNG(recv_buf.buf, recv_buf.size);
                 num_found++;
             }
@@ -92,26 +87,6 @@ int main(int argc, char **argv){
     sprintf(img_num_char, "%d", img_num);
 	strcat(url, img_num_char);
 
-    CURL *curl;
-    CURLcode res;
-
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-    RECV_BUF recv_buf;
-
-    if(curl){
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
-        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
-        curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-    }
-    else{
-        fprintf(stderr, "curl_easy_init: returned NULL\n");
-        return -1;
-    }
-
     pthread_t threads[num_threads];
     void *vr[num_threads];
 
@@ -120,6 +95,9 @@ int main(int argc, char **argv){
     }
     for(int i = 0; i < num_threads; i++){
         pthread_join(threads[i], &vr[i]);
+        if(*(int*)vr[i] == -1){
+            printf("ERROR: thread %d failed\n", *(int*)vr[i]);
+        }
     }
 	
 	int final_size = final_height * (final_width * 4 + 1);

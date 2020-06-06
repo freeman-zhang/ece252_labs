@@ -5,6 +5,7 @@
 #include <unistd.h>             /* for getopt                   */
 #include <getopt.h>             /* to get rid of optarg linting */
 #include <curl/curl.h>          /* for cURL                     */
+#include <pthread.h>            /* for pthread                  */
 #include "png_util/crc.h"       /* for crc()                    */
 #include "png_util/lab_png.h"   /* simple PNG data structures   */
 #include "png_util/zutil.h"     /* for mem_def() and mem_inf()  */
@@ -15,11 +16,51 @@
 #define num_pngs 50
 #define BUF_SIZE 1048576  /* 1024*1024 = 1M */
 
+volatile int num_found = 0;
+simple_PNG_p pngs[num_pngs] = {NULL};
+
+void * run(void * argument){
+    printf("Thread initiated\n");
+    CURL *curl;
+    CURLcode res;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    RECV_BUF recv_buf;
+
+    if(curl){
+        curl_easy_setopt(curl, CURLOPT_URL, argument);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    }
+    while(num_found < 50){
+        recv_buf_init(&recv_buf, BUF_SIZE);
+        res = curl_easy_perform(curl);
+        if(res == CURLE_OK){
+            if(pngs[recv_buf.seq]){
+                printf("Already got img %d\n", recv_buf.seq);
+            }
+            else{
+                printf("Found img %d\n", recv_buf.seq);
+                pngs[recv_buf.seq] = createPNG(recv_buf.buf, recv_buf.size);
+                num_found++;
+            }
+        }
+        else{
+            printf("ERROR: curl failed; aborting\n");
+            return 0;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char **argv){
     int c;
     int num_threads = 1;
     int img_num = 1;
-    char *str = "option requires an argument";
     /* Maybe replace this with a call to main_getopt.c */
     while ((c = getopt (argc, argv, "t:n:")) != -1) {
         switch (c) {
@@ -41,6 +82,7 @@ int main(int argc, char **argv){
             return -1;
         }
     }
+
     char url[100] = "http://ece252-1.uwaterloo.ca:2520/image?img=";
 	//string concatentation of the image number to the url
     char img_num_char[2];
@@ -54,55 +96,28 @@ int main(int argc, char **argv){
     curl = curl_easy_init();
     RECV_BUF recv_buf;
 
-    if(!curl){
-        fprintf(stderr, "curl_easy_init: returned NULL\n");
-        return -1;
-    }
-
-    simple_PNG_p pngs[num_pngs];
-    int image_received[num_pngs] = {0};
-    int num_found = 0;
-
-    while(num_found < 50){
-        recv_buf_init(&recv_buf, BUF_SIZE);
+    if(curl){
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-        res = curl_easy_perform(curl);
-        if(res == CURLE_OK){
-            if(image_received[recv_buf.seq] == 1){
-                printf("Already got img %d\n", recv_buf.seq);
-            }
-            else{
-                printf("Found img %d\n", recv_buf.seq);
-                image_received[recv_buf.seq] = 1;
-                if(recv_buf.seq == 0){
-                    write_file("First", recv_buf.buf, recv_buf.size);
-                }
-                if(recv_buf.seq == 1){
-                    write_file("Second", recv_buf.buf, recv_buf.size);
-                }
-                if(recv_buf.seq == 2){
-                    write_file("Third", recv_buf.buf, recv_buf.size);
-                }
-                if(recv_buf.seq == 3){
-                    write_file("Fourth", recv_buf.buf, recv_buf.size);
-                }
-                pngs[recv_buf.seq] = createPNG(recv_buf.buf, recv_buf.size);
-                num_found++;
-            }
-        }
-        else{
-            printf("ERROR: curl failed; aborting\n");
-            return -1;
-        }
+    }
+    else{
+        fprintf(stderr, "curl_easy_init: returned NULL\n");
+        return -1;
     }
 
-    printf("done\n");
-    // return 0;
+    pthread_t threads[num_threads];
+    void *vr[num_threads];
+
+    for(int i = 0; i < num_threads; i++){
+        pthread_create(&threads[i], NULL, run, url);
+    }
+    for(int i = 0; i < num_threads; i++){
+        pthread_join(threads[i], &vr[i]);
+    }
 	
 	int final_size = final_height * (final_width * 4 + 1);
     U8 *final_buffer = malloc(final_size);

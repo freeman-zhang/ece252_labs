@@ -1,7 +1,7 @@
 CC = gcc
 LD = gcc
 CFLAGS = -Wall -g -std=c99
-LDLIBS = -lz -lcurl
+LDLIBS = -lz -lcurl -pthread
 
 LIB_UTIL = ./png_util/zutil.c ./png_util/crc.c ./png_util/lab_png.c ./cURL/curl_util.c
 

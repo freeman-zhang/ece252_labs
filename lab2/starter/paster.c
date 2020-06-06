@@ -21,6 +21,7 @@ simple_PNG_p pngs[num_pngs] = {NULL};
 
 void * run(void * argument){
     printf("Thread initiated\n");
+    int* retVal = malloc(sizeof(int));
     CURL *curl;
     CURLcode res;
 
@@ -51,10 +52,12 @@ void * run(void * argument){
         }
         else{
             printf("ERROR: curl failed; aborting\n");
-            return 0;
+            *retVal = -1;
+            pthread_exit(retVal);
         }
     }
-    return 0;
+    *retVal = 0;
+    pthread_exit(retVal);
 }
 
 int main(int argc, char **argv){

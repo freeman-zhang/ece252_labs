@@ -55,6 +55,7 @@ int get_png_height(struct chunk *ihdr){
     return getValue(ihdr->p_data, 256, 4, 8);
 }
 
+/* Frees all heap allocated memory from a png */
 void freePNG(simple_PNG_p png){
     free(png->p_IHDR->p_data);
     free(png->p_IHDR);
@@ -64,15 +65,25 @@ void freePNG(simple_PNG_p png){
     free(png);
 }
 
+/**
+ * @brief returns 'size' length unsigned char representing 'value'
+ * @param value unsigned int, value to be converted
+ * @param size  int, desired size of array
+ */
 U8 *insertValue(U32 value, int size){
     U8 *retVal = malloc(size);
-    // printf("blah %x\n", value);
     for(int i = size - 1; i >= 0; i--){
         retVal[i] = value % 256;
         value /= 256;
     }
     return retVal;
 }
+
+/**
+ * @brief returns a simple_PNG_p
+ * @param buffer unsigned char *, array holding data of png
+ * @param buffer_size  unsigned int, size of buffer
+ */
 
 simple_PNG_p createPNG(U8 *buffer, U32 buffer_size){
     simple_PNG_p retVal = malloc(3 * sizeof(struct simple_PNG));
@@ -148,6 +159,13 @@ simple_PNG_p createPNG(U8 *buffer, U32 buffer_size){
     return retVal;
 }
 
+/**
+ * @brief writes a concatenated png to disk
+ * @param pngs simple_PNG_p *, array of png strips
+ * @param num_pngs unsigned int, number of pngs to be concatenated
+ * @param height unsigned int, final height
+ * @param width unsigned int, final width
+ */
 int catPNG(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width){
     int final_size = height * (width * 4 + 1);
     U8 *final_buffer = malloc(final_size);
@@ -264,6 +282,20 @@ int catPNG(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width){
     fwrite(concat_png, 1, sizeof(concat_png), fp);
 
     fclose(fp);
+    
+    free(new_height);
+    free(new_ihdr_length);
+    free(new_ihdr_crc);
+    free(new_idat_length);
+    free(new_idat_crc);
+    free(new_iend_length);
+    free(new_iend_crc);
+
+    free(ihdr_buf);
+    free(idat_buf);
+    free(iend_buf);
+    free(decompressed_buffer);
     free(final_buffer);
+    free(new_ihdr_data);
     return 0;
 }

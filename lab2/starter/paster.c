@@ -49,6 +49,8 @@ void * run(void * url){
             error = 1;
         }
     }
+	curl_easy_cleanup(curl);
+	free(recv_buf.buf);
     curl_global_cleanup();
     pthread_exit(retVal);
 }
@@ -81,7 +83,7 @@ int main(int argc, char **argv){
             return -1;
         }
     }
-
+	
     char url[100] = "http://ece252-1.uwaterloo.ca:2520/image?img=";
     char img_num_char[2];
     sprintf(img_num_char, "%d", img_num);

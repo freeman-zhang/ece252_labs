@@ -84,16 +84,22 @@ int main(int argc, char **argv){
         }
     }
 	
-    char url[100] = "http://ece252-1.uwaterloo.ca:2520/image?img=";
+    char url[3][100];
+	strcpy(url[0], "http://ece252-1.uwaterloo.ca:2520/image?img=");
+	strcpy(url[1], "http://ece252-2.uwaterloo.ca:2520/image?img=");
+	strcpy(url[2], "http://ece252-3.uwaterloo.ca:2520/image?img=");
+
     char img_num_char[2];
     sprintf(img_num_char, "%d", img_num);
-	strcat(url, img_num_char);
-
+	strcat(url[0], img_num_char);
+	strcat(url[1], img_num_char);
+	strcat(url[2], img_num_char);
+		
     pthread_t threads[num_threads];
     void *vr[num_threads];
 
     for(int i = 0; i < num_threads; i++){
-        pthread_create(&threads[i], NULL, run, url);
+        pthread_create(&threads[i], NULL, run, url[i%3]);
     }
     for(int i = 0; i < num_threads; i++){
         pthread_join(threads[i], &vr[i]);

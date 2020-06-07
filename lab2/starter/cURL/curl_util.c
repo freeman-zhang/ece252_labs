@@ -59,7 +59,7 @@ int recv_buf_init(RECV_BUF *ptr, size_t max_size)
 
     p = malloc(max_size);
     if (p == NULL) {
-	return 2;
+		return 2;
     }
     
     ptr->buf = p;
@@ -72,7 +72,7 @@ int recv_buf_init(RECV_BUF *ptr, size_t max_size)
 int recv_buf_cleanup(RECV_BUF *ptr)
 {
     if (ptr == NULL) {
-	return 1;
+		return 1;
     }
     
     free(ptr->buf);

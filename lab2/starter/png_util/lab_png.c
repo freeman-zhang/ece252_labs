@@ -7,7 +7,6 @@
 
 /* Function to calculate values because the one from math.h doesn't work */
 int power(int base, int exp){
-    int i = 1;
     int result = 1;
     for(int i = 0; i < exp; i++){
         result *= base;
@@ -29,7 +28,7 @@ U32 getValue(unsigned char *buf, int base, int start, int end){
 
 /* Looks at file size to see how much space needs to be allocated to buffer */
 U32 getBufferSize(U8 *path){
-    FILE *png = fopen(path, "rb");
+    FILE *png = fopen((char*)path, "rb");
     if(png == NULL){
         return -1;
     }
@@ -146,16 +145,10 @@ simple_PNG_p createPNG(U8 *buffer, U32 buffer_size){
     memcpy(iend->type, iend_type, sizeof(iend_type));
     iend->p_data = NULL;
     iend->crc = iend_crc;
-
-    U8 *buf = (U8 *)malloc(sizeof(U8) * buffer_size);
-    for(int i = 0; i < buffer_size; i++){
-        buf[i] = buffer[i];
-    }
-
+	
     retVal->p_IHDR = ihdr;
     retVal->p_IDAT = idat;
     retVal->p_IEND = iend;
-
     return retVal;
 }
 
@@ -175,8 +168,7 @@ int catPNG(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width){
     for(int i = 0; i < num_pngs; i++){
         ret = mem_inf(final_buffer + (offset * sizeof(U8)), &output_length, pngs[i]->p_IDAT->p_data, pngs[i]->p_IDAT->length);
         if (ret == 0) { /* success */
-        // printf("original len = %d, len_def = %lu, len_inf = %lu\n", \
-               final_size, pngs[i]->p_IDAT->length, output_length);
+        // printf("original len = %d, len_def = %lu, len_inf = %lu\n", final_size, pngs[i]->p_IDAT->length, output_length);
         } else { /* failure */
             fprintf(stderr,"mem_def failed. ret = %d.\n", ret);
         }
@@ -233,7 +225,7 @@ int catPNG(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width){
     marker += PNG_SIG_SIZE;
 
     U8 *new_ihdr_length = insertValue(13, 4);
-    memcpy(concat_png + marker, new_ihdr_length, sizeof(new_ihdr_length));
+    memcpy(concat_png + marker, new_ihdr_length, (U8)sizeof(new_ihdr_length));
     marker += CHUNK_LEN_SIZE;
 
     memcpy(concat_png + marker, pngs[0]->p_IHDR->type, sizeof(pngs[0]->p_IHDR->type));

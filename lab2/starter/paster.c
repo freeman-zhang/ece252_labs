@@ -40,7 +40,7 @@ void * run(void * url){
         res = curl_easy_perform(curl);
         if(res == CURLE_OK){
             if(!pngs[recv_buf.seq]){
-                pngs[recv_buf.seq] = createPNG(recv_buf.buf, recv_buf.size);
+                pngs[recv_buf.seq] = createPNG((U8*)recv_buf.buf, recv_buf.size);
                 num_found++;
             }
         }
@@ -48,9 +48,9 @@ void * run(void * url){
             *retVal = -1;
             error = 1;
         }
+		recv_buf_cleanup(&recv_buf);
     }
 	curl_easy_cleanup(curl);
-	free(recv_buf.buf);
     curl_global_cleanup();
     pthread_exit(retVal);
 }

@@ -58,32 +58,16 @@ void * run(void * url){
 //TODO load balancing
 //TODO synchronization to avoid memory leaks from creating 2 same pngs
 int main(int argc, char **argv){
-    int c;
-    int num_threads = 1;
-    int img_num = 1;
-    int thread_error = 0;
-    /* Maybe replace this with a call to main_getopt.c */
-    while ((c = getopt (argc, argv, "t:n:")) != -1) {
-        switch (c) {
-        case 't':
-            num_threads = strtoul(optarg, NULL, 10);
-            if (num_threads <= 0) {
-                    fprintf(stderr, "%s: -t > 0 -- 't'\n", argv[0]);
-                    return -1;
-                }
-        break;
-        case 'n':
-            img_num = strtoul(optarg, NULL, 10);
-            if (img_num <= 0 || img_num > 3) {
-                fprintf(stderr, "%s: -n must be followed by: 1, 2, or 3 -- 'n'\n", argv[0]);
-                return -1;
-            }
-        break;
-        default:
-            return -1;
-        }
-    }
 	
+	int buffer_size = atoi(argv[1]);		//B
+    int num_producers = atoi(argv[2]);		//P
+	int num_consumers = atoi(argv[3]);		//C
+	int sleep_time = atoi(argv[4]); 		//X
+    int img_num = atoi(argv[5]);			//N
+		
+    int thread_error = 0;
+	
+		
     char url[3][100];
 	strcpy(url[0], "http://ece252-1.uwaterloo.ca:2530/image?img=");
 	strcpy(url[1], "http://ece252-2.uwaterloo.ca:2530/image?img=");

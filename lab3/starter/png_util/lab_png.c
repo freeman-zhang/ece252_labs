@@ -154,32 +154,19 @@ simple_PNG_p createPNG(U8 *buffer, U32 buffer_size){
 
 /**
  * @brief writes a concatenated png to disk
+ * @param final_buffer, buffer with inflated image strips
  * @param pngs simple_PNG_p *, array of png strips
- * @param num_pngs unsigned int, number of pngs to be concatenated
  * @param height unsigned int, final height
  * @param width unsigned int, final width
  */
-int catPNG(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width){
-    int final_size = height * (width * 4 + 1);
-    U8 *final_buffer = malloc(final_size);
-    U64 output_length = 0;
+int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int* offset){
     int ret = 0;
-    int offset = 0;
-    for(int i = 0; i < num_pngs; i++){
-        ret = mem_inf(final_buffer + (offset * sizeof(U8)), &output_length, pngs[i]->p_IDAT->p_data, pngs[i]->p_IDAT->length);
-        if (ret == 0) { /* success */
-        // printf("original len = %d, len_def = %lu, len_inf = %lu\n", final_size, pngs[i]->p_IDAT->length, output_length);
-        } else { /* failure */
-            fprintf(stderr,"mem_def failed. ret = %d.\n", ret);
-        }
-        offset += output_length;
-    }
-
     int decompressed_size = height * (4 * width + 1);
     U8 *decompressed_buffer = malloc(decompressed_size);
     U64 new_size = 0;
 
-    ret = mem_def(decompressed_buffer, &new_size, final_buffer, offset, Z_DEFAULT_COMPRESSION);
+    ret = mem_def(decompressed_buffer, &new_size, final_buffer, *offset, Z_DEFAULT_COMPRESSION);
+
     if (ret == 0) { /* success */
         // printf("original len = %d, len_def = %lu\n");
     } else { /* failure */
@@ -287,7 +274,29 @@ int catPNG(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width){
     free(idat_buf);
     free(iend_buf);
     free(decompressed_buffer);
-    free(final_buffer);
     free(new_ihdr_data);
     return 0;
+}
+
+/**
+ * @brief inflates image strips to buffer
+ * @param pngs simple_PNG_p *, array of png strips
+ * @param num_pngs unsigned int, number of pngs to be concatenated
+ * @param height unsigned int, final height
+ * @param width unsigned int, final width
+ * @param final_buffer, buffer to inflate images to
+ */
+int inflateStrips(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width, U8* final_buffer, int *offset){
+	U64 output_length = 0;
+	int ret = 0;
+    for(int i = 0; i < num_pngs; i++){
+        ret = mem_inf(final_buffer + (*offset * sizeof(U8)), &output_length, pngs[i]->p_IDAT->p_data, pngs[i]->p_IDAT->length);
+        if (ret == 0) { /* success */
+        // printf("original len = %d, len_def = %lu, len_inf = %lu\n", final_size, pngs[i]->p_IDAT->length, output_length);
+        } else { /* failure */
+            fprintf(stderr,"mem_def failed. ret = %d.\n", ret);
+        }
+        *offset += output_length;
+    }
+	return ret;
 }

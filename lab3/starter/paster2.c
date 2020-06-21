@@ -5,6 +5,7 @@
 #include <curl/curl.h>          /* for cURL                     */
 #include <pthread.h>            /* for pthread                  */
 #include <string.h>
+#include <time.h>
 #include "png_util/lab_png.h"   /* simple PNG data structures   */
 #include "cURL/curl_util.h"     /* for header and write cb      */
 #include <sys/shm.h>
@@ -67,7 +68,6 @@ int enqueue(png_queue_p queue, struct recv_buf buf){
     }
     else{
         return -1;
-        printf("full\n");
     }
     return 0;
 }
@@ -84,7 +84,6 @@ queue_entry_p dequeue(png_queue_p queue){
 	}
 	else{
 		retVal = NULL;
-		printf("empty\n");
 	}
     return retVal;
 }
@@ -116,6 +115,7 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 		}
     while(*num_found < NUM_PNGS && !error){
         // printf("cunt licker\n");
+        usleep(1);
         sem_wait(counter_sem);
 		char newUrl[100];
 		strcpy(newUrl, url);
@@ -145,7 +145,7 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 
             sem_post(enqueue_sem);
             // printf("posting\n");
-            sem_post(buffer_sem);
+            
         }
         else{
             printf("uhoh\n");
@@ -164,15 +164,20 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
     // printf("%x\n", queue->queue[0].entry[0]);
-	printf("Kms\n");
+	// printf("Kms\n");
 	//raise (SIGTSTP);
     return retVal;
 }
 
-int consumer(int shmid, sem_t *dequeue_sem, png_queue_p queue){
-    printf("consuming...\n");
-	shared_mem_p mem = shmat(shmid, NULL, 0);
+int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_p queue){
+    // printf("consuming...\n");
+    struct timespec tim;
+    tim.tv_sec = mem->wait_time / 1000;
+    tim.tv_nsec = (mem->wait_time / 1000) * 1000000;
+    // printf("%lu\n", tim.tv_nsec);
 	while (mem->num_inflated < 50){
+        nanosleep(&tim, NULL);
+        // printf("Consuming %d\n", mem->num_inflated);
 		sem_wait(dequeue_sem);
 		queue_entry_p strip = dequeue(queue);
 		sem_post(dequeue_sem);
@@ -183,9 +188,10 @@ int consumer(int shmid, sem_t *dequeue_sem, png_queue_p queue){
 				printf("inflated %d\n", strip->number);
 				mem->num_inflated += 1;
 			}
+            sem_post(buffer_sem);
 		}
 	}
-	printf("consume done\n");
+	// printf("consume done\n");
 	shmdt(mem);
 	//raise (SIGTSTP);
     return 0;
@@ -194,6 +200,14 @@ int consumer(int shmid, sem_t *dequeue_sem, png_queue_p queue){
 //TODO load balancing
 //TODO synchronization to avoid memory leaks from creating 2 same pngs
 int main(int argc, char **argv){
+
+    if(argc < 6){
+        printf("Not enough args\n");
+        return -1;
+    }
+
+    struct timeval begin, end;
+    gettimeofday(&begin, NULL);
 	
 	int buffer_size = atoi(argv[1]);		//B
     int num_producers = atoi(argv[2]);		//P
@@ -235,7 +249,7 @@ int main(int argc, char **argv){
     int *num_found = shmat(counter_shmid, NULL, 0);
 	shared_mem_p shared = shmat(shmid, NULL, 0);
     *num_found = 0;
-    printf("found you bitch\n");
+    // printf("found you bitch\n");
     // mem->wait_time = sleep_time;
     // mem->queue;
     // mem->queue = malloc(sizeof(struct png_queue) * buffer_size);
@@ -244,6 +258,7 @@ int main(int argc, char **argv){
     mem->front = 0;
     mem->rear = -1;
     mem->max = buffer_size;
+    shared->wait_time = sleep_time;
 	shared->num_inflated = 0;
     // printf("%d\n", mem->num_found);
 
@@ -269,7 +284,7 @@ int main(int argc, char **argv){
     for(int i = 0; i < num_consumers; i++){
         con_pid[i] = fork();
         if(con_pid[i] == 0){
-            consumer(shmid, dequeue_sem, mem);
+            consumer(shared, dequeue_sem, buffer_sem, mem);
             return 0;
         }
     }
@@ -285,15 +300,20 @@ int main(int argc, char **argv){
     //    kill(con_pid[i], SIGTERM);
     //}
 
-    printf("Children are done\n");
+    // printf("Children are done\n");
     // printf("%x\n", mem->pngs->queue[0]);
-    for(int i = 0; i < buffer_size; i++){
-        printf("%d ", mem->queue[i].number);
-    }
-    printf("\n");
+    // for(int i = 0; i < buffer_size; i++){
+    //     printf("%d ", mem->queue[i].number);
+    // }
+    // printf("\n");
 	U8* png_buf = entries[0].entry;
 	simple_PNG_p png = createPNG(png_buf);
 	catPNG(png, shared->final_buffer, final_height, final_width, &shared->offset);
+
+    gettimeofday(&end, NULL);
+    unsigned int t = end.tv_usec - begin.tv_usec;
+    // printf("test\n");
+    printf("%f\n", (double)t / 3000);
 
     // simple_PNG_p pngs[50] = {NULL};
     // for(int i = 0; i < 50; i++){

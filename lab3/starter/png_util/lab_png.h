@@ -74,6 +74,6 @@ void freePNG(simple_PNG_p png);
 U8 * insertValue(U32 value, int size);
 simple_PNG_p createPNG(U8 *buffer, U32 buffer_size);
 int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int *offset);
-int inflateStrips(simple_PNG_p* pngs, int num_pngs, U32 height, U32 width, U8* final_buffer, int *offset);
+int inflateStrips(simple_PNG_p png, U8* final_buffer, int *offset);
 
 /* declare your own functions prototypes here */

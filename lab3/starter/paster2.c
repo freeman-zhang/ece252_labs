@@ -291,6 +291,9 @@ int main(int argc, char **argv){
         printf("%d ", mem->queue[i].number);
     }
     printf("\n");
+	U8* png_buf = entries[0].entry;
+	simple_PNG_p png = createPNG(png_buf);
+	catPNG(png, shared->final_buffer, final_height, final_width, &shared->offset);
 
     // simple_PNG_p pngs[50] = {NULL};
     // for(int i = 0; i < 50; i++){

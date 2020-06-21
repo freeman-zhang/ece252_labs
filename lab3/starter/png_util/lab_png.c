@@ -159,7 +159,7 @@ simple_PNG_p createPNG(U8 *buffer){
  * @param height unsigned int, final height
  * @param width unsigned int, final width
  */
-int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int* offset){
+int catPNG(simple_PNG_p png, U8* final_buffer, U32 height, U32 width, int* offset){
     int ret = 0;
     int decompressed_size = height * (4 * width + 1);
     U8 *decompressed_buffer = malloc(decompressed_size);
@@ -188,9 +188,9 @@ int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int* off
     memcpy(new_ihdr_data + 4, new_height, 4 * sizeof(U8));
 
     for(int i = 0; i < 4; i++){
-           ihdr_buf[i] = pngs[0]->p_IHDR->type[i];
-           idat_buf[i] = pngs[0]->p_IDAT->type[i];
-           iend_buf[i] = pngs[0]->p_IEND->type[i];
+           ihdr_buf[i] = png->p_IHDR->type[i];
+           idat_buf[i] = png->p_IDAT->type[i];
+           iend_buf[i] = png->p_IEND->type[i];
     }
     int index = 0;
     for(int i = 4; i < 4 + DATA_IHDR_SIZE; i++, index++){
@@ -215,10 +215,10 @@ int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int* off
     memcpy(concat_png + marker, new_ihdr_length, (U8)sizeof(new_ihdr_length));
     marker += CHUNK_LEN_SIZE;
 
-    memcpy(concat_png + marker, pngs[0]->p_IHDR->type, sizeof(pngs[0]->p_IHDR->type));
+    memcpy(concat_png + marker, png->p_IHDR->type, sizeof(png->p_IHDR->type));
     marker += CHUNK_TYPE_SIZE;
 
-    memcpy(concat_png + marker, pngs[0]->p_IHDR->p_data, pngs[0]->p_IHDR->length);
+    memcpy(concat_png + marker, png->p_IHDR->p_data, png->p_IHDR->length);
 
     memcpy(concat_png + marker + 4, new_height, 4 * sizeof(U8));
     marker += DATA_IHDR_SIZE;
@@ -233,7 +233,7 @@ int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int* off
     memcpy(concat_png + marker, new_idat_length, 4 * sizeof(U8));
     marker += CHUNK_LEN_SIZE;
 
-    memcpy(concat_png + marker, pngs[0]->p_IDAT->type, sizeof(pngs[0]->p_IDAT->type));
+    memcpy(concat_png + marker, png->p_IDAT->type, sizeof(png->p_IDAT->type));
     marker += CHUNK_TYPE_SIZE;
 
     memcpy(concat_png + marker, decompressed_buffer, new_size);
@@ -247,7 +247,7 @@ int catPNG(simple_PNG_p* pngs, U8* final_buffer, U32 height, U32 width, int* off
     memcpy(concat_png + marker, new_iend_length, 4 * sizeof(U8));
     marker += CHUNK_LEN_SIZE;
 
-    memcpy(concat_png + marker, pngs[0]->p_IEND->type, sizeof(pngs[0]->p_IDAT->type));
+    memcpy(concat_png + marker, png->p_IEND->type, sizeof(png->p_IDAT->type));
     marker += CHUNK_TYPE_SIZE;
 
     // IEND data but its empty so do nothing

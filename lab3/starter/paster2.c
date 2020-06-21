@@ -4,6 +4,7 @@
 #include <getopt.h>             /* to get rid of optarg linting */
 #include <curl/curl.h>          /* for cURL                     */
 #include <pthread.h>            /* for pthread                  */
+#include <string.h>
 #include "png_util/lab_png.h"   /* simple PNG data structures   */
 #include "cURL/curl_util.h"     /* for header and write cb      */
 #include <sys/shm.h>
@@ -31,10 +32,10 @@ typedef struct png_queue{
 } *png_queue_p;
 
 typedef struct shared_mem{
+    int wait_time;
     int offset;
     int num_found;
     int head;
-    char *urls;
     png_queue_p pngs;
 } *shared_mem_p;
 
@@ -67,11 +68,12 @@ simple_PNG_p dequeue(png_queue_p queue){
     return retVal;
 }
 
-int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, void * url){
+int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
+    printf("please?\n");
     shared_mem_p mem = shmat(shmid, NULL, 0);
 
     int retVal = 0;
-    int strip_num = 0;
+    int strip = 0;
     volatile int error = 0;
 
     CURL *curl;
@@ -91,18 +93,19 @@ int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, void * url){
     }
     while(mem->num_found < 50 && !error){
         sem_wait(counter_sem);
-        strip_num = mem->num_found;
+        url[51] = mem->num_found;
+        strip = mem->num_found;
+        // printf("making png %d\n", mem->num_found);
         mem->num_found = mem->num_found + 1;
         sem_post(counter_sem);
         recv_buf_init(&recv_buf, BUF_SIZE);
         res = curl_easy_perform(curl);
         if(res == CURLE_OK){
             sem_wait(buffer_sem);
-            //Call create png and pop into queue
+            enqueue(mem->pngs, createPNG((U8*)recv_buf.buf, recv_buf.size));
+            // printf("making png %d\n", strip);
+            printf("curl from url %s\n", url);
             sem_post(buffer_sem);
-            // if(!mem->pngs[recv_buf.seq]){
-            //     pngs[recv_buf.seq] = createPNG((U8*)recv_buf.buf, recv_buf.size);
-            // }
         }
         else{
             retVal = -1;
@@ -113,19 +116,12 @@ int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, void * url){
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
     shmdt(mem);
-    return 0;
+    return retVal;
 }
 
-int producer(int shmid, sem_t *sem, char *url){
+int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char *url){
     shared_mem_p mem = shmat(shmid, NULL, 0);
-    while(mem->num_found < 5){
-        sem_wait(sem);
-        printf("woop %d\n", mem->num_found);
-        sleep(1);
-        mem->num_found = mem->num_found + 1;
-        sem_post(sem);
-    }
-    //call fetch png
+    fetch_png(shmid, counter_sem, buffer_sem, url);
     shmdt(mem);
     return 0;
 }
@@ -160,6 +156,10 @@ int main(int argc, char **argv){
 	strcat(url[1], img_num_char);
 	strcat(url[2], img_num_char);
 
+    strcat(url[0], "&part=");
+	strcat(url[1], "&part=");
+	strcat(url[2], "&part=");
+
     int shmid = shmget(IPC_PRIVATE, buffer_size * sizeof(struct shared_mem), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     if ( shmid == -1){
         perror("shmget");
@@ -169,7 +169,7 @@ int main(int argc, char **argv){
     shared_mem_p mem = shmat(shmid, NULL, 0);
     mem->num_found = 0;
     printf("found you bitch\n");
-    mem->urls = malloc(sizeof(url));
+    mem->wait_time = sleep_time;
     mem->pngs = malloc(sizeof(struct png_queue));
     mem->pngs->queue = malloc(buffer_size * sizeof(struct simple_PNG));
     mem->pngs->count = 0;
@@ -190,7 +190,7 @@ int main(int argc, char **argv){
     for(int i = 0; i < num_producers; i++){
         prod_pid[i] = fork();
         if(prod_pid[i] == 0){
-            producer(shmid, counter_sem, url[i % 3]);
+            producer(shmid, counter_sem, buffer_sem, url[i % 3]);
             return 0;
         }
     }

@@ -84,7 +84,7 @@ U8 *insertValue(U32 value, int size){
  * @param buffer_size  unsigned int, size of buffer
  */
 
-simple_PNG_p createPNG(U8 *buffer, U32 buffer_size){
+simple_PNG_p createPNG(U8 *buffer){
     simple_PNG_p retVal = malloc(3 * sizeof(struct simple_PNG));
     int isPNG = is_png(buffer);
     if(!isPNG){

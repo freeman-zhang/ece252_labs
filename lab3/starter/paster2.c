@@ -38,6 +38,8 @@ typedef struct shared_mem{
     int wait_time;
     int offset;
     int num_found;
+	int num_inflated;
+	U8* final_buffer;
     int head;
     struct png_queue pngs;
 } *shared_mem_p;
@@ -71,12 +73,19 @@ int enqueue(png_queue_p queue, struct recv_buf buf){
 }
 
 queue_entry_p dequeue(png_queue_p queue){
-    queue_entry_p retVal = &queue->queue[queue->front++];
+	queue_entry_p retVal;
+	if (!empty(queue)){
+		retVal = &queue->queue[queue->front++];
 
-    if(queue->front == queue->max){
-        queue->front = 0;
-    }
-    queue->count--;
+		if(queue->front == queue->max){
+			queue->front = 0;
+		}
+		queue->count--;
+	}
+	else{
+		retVal = NULL;
+		printf("empty\n");
+	}
     return retVal;
 }
 
@@ -156,13 +165,31 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
     curl_global_cleanup();
     // printf("%x\n", queue->queue[0].entry[0]);
 	printf("Kms\n");
-	raise (SIGTSTP);
-	printf("Am i dead yet?\n");
+	//raise (SIGTSTP);
     return retVal;
 }
 
-int consumer(){
+int consumer(int shmid, sem_t *dequeue_sem, png_queue_p queue){
     printf("consuming...\n");
+	shared_mem_p mem = shmat(shmid, NULL, 0);
+	while (mem->num_inflated < 50){
+		sem_wait(dequeue_sem);
+		queue_entry_p strip = dequeue(queue);
+		sem_post(dequeue_sem);
+		printf("%d\n", strip != NULL);
+		if (strip != NULL){
+			simple_PNG_p newpng = createPNG(strip->entry);
+			printf("inflate strip %d", strip->number);
+			//mem->num_inflated += 1;
+			if (!inflateStrips(newpng, mem->final_buffer, &mem->offset)){
+				printf("inflated %d", strip->number);
+				mem->num_inflated += 1;
+			}
+		}
+	}
+	printf("consume done");
+	shmdt(mem);
+	//raise (SIGTSTP);
     return 0;
 }
 
@@ -199,6 +226,7 @@ int main(int argc, char **argv){
     int counter_shmid = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     int queue_struct_shmid = shmget(IPC_PRIVATE, sizeof(struct png_queue), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     int queue_shmid = shmget(IPC_PRIVATE, buffer_size * sizeof(struct queue_entry), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+	int shmid = shmget(IPC_PRIVATE, buffer_size * sizeof(struct shared_mem), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     if ( queue_struct_shmid == -1){
         perror("shmget");
     }
@@ -207,6 +235,7 @@ int main(int argc, char **argv){
     png_queue_p mem = shmat(queue_struct_shmid, NULL, 0);
     queue_entry_p entries = shmat(queue_shmid, NULL, 0);
     int *num_found = shmat(counter_shmid, NULL, 0);
+	shared_mem_p shared = shmat(shmid, NULL, 0);
     *num_found = 0;
     printf("found you bitch\n");
     // mem->wait_time = sleep_time;
@@ -217,15 +246,17 @@ int main(int argc, char **argv){
     mem->front = 0;
     mem->rear = -1;
     mem->max = buffer_size;
-
+	shared->num_inflated = 0;
     // printf("%d\n", mem->num_found);
 
     sem_t *counter_sem = sem_open("counter", O_CREAT, 0644, 1);
     sem_t *buffer_sem = sem_open("buffer", O_CREAT, 0644, buffer_size);
     sem_t *enqueue_sem = sem_open("enqueue", O_CREAT, 0644, 1);
+	sem_t *dequeue_sem = sem_open("dequeue", O_CREAT, 0644, 1);
     sem_init(counter_sem, 0, 1);
     sem_init(buffer_sem, 0, buffer_size);
     sem_init(enqueue_sem, 0, 1);
+	sem_init(dequeue_sem, 0, 1);
 
     pid_t prod_pid[num_producers];
     pid_t con_pid[num_consumers];
@@ -240,11 +271,11 @@ int main(int argc, char **argv){
     for(int i = 0; i < num_consumers; i++){
         con_pid[i] = fork();
         if(con_pid[i] == 0){
-            consumer();
+            consumer(shmid, dequeue_sem, mem);
             return 0;
         }
     }
-    while(*num_found < NUM_PNGS){
+    while(*num_found < NUM_PNGS || shared->num_inflated < 50){
         // printf("its now %d\n", mem->num_found);
         sleep(1);
     }
@@ -252,9 +283,9 @@ int main(int argc, char **argv){
     //    // printf("%d\n", prod_pid[i]);
     //    kill(prod_pid[i], SIGTERM);
     //}
-    for(int i = 0; i < num_consumers; i++){
-        kill(con_pid[i], SIGTERM);
-    }
+    //for(int i = 0; i < num_consumers; i++){
+    //    kill(con_pid[i], SIGTERM);
+    //}
 
     printf("Children are done\n");
     // printf("%x\n", mem->pngs->queue[0]);

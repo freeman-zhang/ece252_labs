@@ -143,6 +143,9 @@ int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
     shmdt(mem);
+	printf("Kms\n");
+	raise (SIGTSTP);
+	printf("Am i dead yet?\n");
     return retVal;
 }
 
@@ -226,10 +229,10 @@ int main(int argc, char **argv){
         // printf("its now %d\n", *num_found);
         sleep(1);
     }
-    for(int i = 0; i < num_producers; i++){
-        // printf("%d\n", prod_pid[i]);
-        kill(prod_pid[i], SIGTERM);
-    }
+    //for(int i = 0; i < num_producers; i++){
+    //    // printf("%d\n", prod_pid[i]);
+    //    kill(prod_pid[i], SIGTERM);
+    //}
     for(int i = 0; i < num_consumers; i++){
         kill(con_pid[i], SIGTERM);
     }

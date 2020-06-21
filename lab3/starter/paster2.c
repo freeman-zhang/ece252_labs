@@ -17,14 +17,12 @@
 
 #define final_height 300
 #define final_width 400
-#define num_pngs 50
+#define NUM_PNGS 50
 #define BUF_SIZE 1048576  /* 1024*1024 = 1M */
 #define SHM_SIZE 256 
 
-// simple_PNG_p pngs[num_pngs] = {NULL};
-
 typedef struct queue_entry{
-    simple_PNG_p entry;
+    U8 entry[BUF_SIZE];
     int number;
 } *queue_entry_p;
 
@@ -33,7 +31,7 @@ typedef struct png_queue{
     int rear;
     int count;
     int max;
-    queue_entry_p *queue;
+    struct queue_entry *queue;
 } *png_queue_p;
 
 typedef struct shared_mem{
@@ -41,7 +39,7 @@ typedef struct shared_mem{
     int offset;
     int num_found;
     int head;
-    png_queue_p pngs;
+    struct png_queue pngs;
 } *shared_mem_p;
 
 int empty(png_queue_p queue){
@@ -52,22 +50,28 @@ int full(png_queue_p queue){
     return queue->count == queue->max;
 }
 
-int enqueue(png_queue_p queue, queue_entry_p png){
+//need sem for this
+int enqueue(png_queue_p queue, struct recv_buf buf){
     if(!full(queue)){
         if(queue->rear == queue->max - 1){
             queue->rear = -1;
         }
-        queue->queue[++queue->rear] = png;
+        ++queue->rear;
+        memcpy(queue->queue[queue->rear].entry, buf.buf, buf.max_size);
+        queue->queue[queue->rear].number = buf.seq;
+        // printf("inserting number %d into index %d\n", queue->queue[queue->rear].number, queue->rear);
+
         queue->count++;
     }
     else{
-        // printf("full\n");
+        return -1;
+        printf("full\n");
     }
     return 0;
 }
 
 queue_entry_p dequeue(png_queue_p queue){
-    queue_entry_p retVal = queue->queue[queue->front++];
+    queue_entry_p retVal = &queue->queue[queue->front++];
 
     if(queue->front == queue->max){
         queue->front = 0;
@@ -78,20 +82,17 @@ queue_entry_p dequeue(png_queue_p queue){
 
 void print_queue(png_queue_p queue){
     for(int i = 0; i < queue->max; i++){
-        printf("%d ", queue->queue[i]);
+        printf("%d ", queue->queue[i].number);
     }
     printf("\n");
 }
 
-int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
-    shared_mem_p mem = shmat(shmid, NULL, 0);
-	 
+int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffer_sem, sem_t *enqueue_sem, char * url){
     int retVal = 0;
     volatile int error = 0;
-    int split_number = 0;
 
     CURL *curl;
-    CURLcode res;
+    CURLcode response;
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
@@ -104,33 +105,35 @@ int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 		}
-    while(mem->num_found < 50 && !error){
+    while(*num_found < NUM_PNGS && !error){
+        // printf("cunt licker\n");
+        sem_wait(counter_sem);
 		char newUrl[100];
 		strcpy(newUrl, url);
 		char num_found_char[3];
-		sprintf(num_found_char, "%d", mem->num_found);
+		sprintf(num_found_char, "%d", *num_found);
 		strcat(newUrl, num_found_char);
 		
 		curl_easy_setopt(curl, CURLOPT_URL, newUrl);
 		
-        sem_wait(counter_sem);
-        // printf("making png %d\n", mem->num_found);
-        split_number = mem->num_found;
-        mem->num_found = mem->num_found + 1;
+        
+        // printf("making png %d\n", *num_found);
+        *num_found = *num_found + 1;
         sem_post(counter_sem);
         recv_buf_init(&recv_buf, BUF_SIZE);
-        res = curl_easy_perform(curl);
-        if(res == CURLE_OK){
+        response = curl_easy_perform(curl);
+        if(response == CURLE_OK){
             sem_wait(buffer_sem);
-            simple_PNG_p res = createPNG((U8*)recv_buf.buf, recv_buf.size);
-            queue_entry_p entry = malloc(sizeof(struct queue_entry));
-            entry->entry = res;
-            entry->number = split_number;
-            enqueue(mem->pngs, entry);
-            print_queue(mem->pngs);
-            // printf("%s\n", newUrl);	
-            // printf("making png %d\n", strip);
-            //printf("curl from url %s\n", url);
+            // printf("%d\n", recv_buf.seq);
+            sem_wait(enqueue_sem);
+
+
+            enqueue(queue, recv_buf);
+            // printf("curl from url %s\n", newUrl);
+            // printf("%d\n", recv_buf.seq);
+
+
+            sem_post(enqueue_sem);
             sem_post(buffer_sem);
         }
         else{
@@ -139,11 +142,17 @@ int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
             error = 1;
         }	
         recv_buf_cleanup(&recv_buf);
+        // printf("what\n");
+        // for(int i = 0; i < 21; i++){
+        //     printf("%x ", queue->queue[0].entry[i]);
+        // }
+        // printf("\n");
     }
+    // printf("what\n");
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
-    shmdt(mem);
-	printf("Kms\n");
+    // printf("%x\n", queue->queue[0].entry[0]);
+	// printf("Kms\n");
 	raise (SIGTSTP);
 	printf("Am i dead yet?\n");
     return retVal;
@@ -184,29 +193,36 @@ int main(int argc, char **argv){
 	strcat(url[1], "&part=");
 	strcat(url[2], "&part=");
 
-    int shmid = shmget(IPC_PRIVATE, buffer_size * sizeof(struct shared_mem), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
-    if ( shmid == -1){
+    int counter_shmid = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+    int queue_struct_shmid = shmget(IPC_PRIVATE, sizeof(struct png_queue), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+    int queue_shmid = shmget(IPC_PRIVATE, buffer_size * sizeof(struct queue_entry), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+    if ( queue_struct_shmid == -1){
         perror("shmget");
     }
 
     //initilazing shared memory
-    shared_mem_p mem = shmat(shmid, NULL, 0);
-    mem->num_found = 0;
+    png_queue_p mem = shmat(queue_struct_shmid, NULL, 0);
+    queue_entry_p entries = shmat(queue_shmid, NULL, 0);
+    int *num_found = shmat(counter_shmid, NULL, 0);
+    *num_found = 0;
     printf("found you bitch\n");
-    mem->wait_time = sleep_time;
-    mem->pngs = malloc(sizeof(struct png_queue));
-    mem->pngs->queue = malloc(buffer_size * sizeof(struct queue_entry));
-    mem->pngs->count = 0;
-    mem->pngs->front = 0;
-    mem->pngs->rear = -1;
-    mem->pngs->max = buffer_size;
+    // mem->wait_time = sleep_time;
+    // mem->queue;
+    // mem->queue = malloc(sizeof(struct png_queue) * buffer_size);
+    mem->queue = entries;
+    mem->count = 0;
+    mem->front = 0;
+    mem->rear = -1;
+    mem->max = buffer_size;
 
     // printf("%d\n", mem->num_found);
 
     sem_t *counter_sem = sem_open("counter", O_CREAT, 0644, 1);
     sem_t *buffer_sem = sem_open("buffer", O_CREAT, 0644, buffer_size);
+    sem_t *enqueue_sem = sem_open("enqueue", O_CREAT, 0644, 1);
     sem_init(counter_sem, 0, 1);
     sem_init(buffer_sem, 0, buffer_size);
+    sem_init(enqueue_sem, 0, 1);
 
     pid_t prod_pid[num_producers];
     pid_t con_pid[num_consumers];
@@ -214,7 +230,7 @@ int main(int argc, char **argv){
     for(int i = 0; i < num_producers; i++){
         prod_pid[i] = fork();
         if(prod_pid[i] == 0){
-            producer(shmid, counter_sem, buffer_sem, url[i % 3]);
+            producer(mem, num_found, counter_sem, buffer_sem, enqueue_sem, url[i % 3]);
             return 0;
         }
     }
@@ -225,8 +241,8 @@ int main(int argc, char **argv){
             return 0;
         }
     }
-    while(mem->num_found < 50){
-        // printf("its now %d\n", *num_found);
+    while(*num_found < NUM_PNGS){
+        // printf("its now %d\n", mem->num_found);
         sleep(1);
     }
     //for(int i = 0; i < num_producers; i++){
@@ -236,11 +252,14 @@ int main(int argc, char **argv){
     for(int i = 0; i < num_consumers; i++){
         kill(con_pid[i], SIGTERM);
     }
+
     printf("Children are done\n");
-    // for(int i = 0; i < buffer_size; i++){
-    //     printf("%d\n", mem->pngs->queue[i]);
-    // }
-    print_queue(mem->pngs);
+    // printf("%x\n", mem->pngs->queue[0]);
+    for(int i = 0; i < buffer_size; i++){
+        printf("%d ", mem->queue[i].number);
+    }
+    printf("\n");
+    // print_queue(mem->pngs);
     //Delete shm
 		
     // pthread_t threads[num_threads];

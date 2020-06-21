@@ -23,12 +23,17 @@
 
 // simple_PNG_p pngs[num_pngs] = {NULL};
 
+typedef struct queue_entry{
+    simple_PNG_p entry;
+    int number;
+} *queue_entry_p;
+
 typedef struct png_queue{
     int front;
     int rear;
     int count;
     int max;
-    simple_PNG_p *queue;
+    queue_entry_p *queue;
 } *png_queue_p;
 
 typedef struct shared_mem{
@@ -47,7 +52,7 @@ int full(png_queue_p queue){
     return queue->count == queue->max;
 }
 
-int enqueue(png_queue_p queue, simple_PNG_p png){
+int enqueue(png_queue_p queue, queue_entry_p png){
     if(!full(queue)){
         if(queue->rear == queue->max - 1){
             queue->rear = -1;
@@ -55,11 +60,14 @@ int enqueue(png_queue_p queue, simple_PNG_p png){
         queue->queue[++queue->rear] = png;
         queue->count++;
     }
+    else{
+        // printf("full\n");
+    }
     return 0;
 }
 
-simple_PNG_p dequeue(png_queue_p queue){
-    simple_PNG_p retVal = queue->queue[queue->front++];
+queue_entry_p dequeue(png_queue_p queue){
+    queue_entry_p retVal = queue->queue[queue->front++];
 
     if(queue->front == queue->max){
         queue->front = 0;
@@ -68,12 +76,19 @@ simple_PNG_p dequeue(png_queue_p queue){
     return retVal;
 }
 
-int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
+void print_queue(png_queue_p queue){
+    for(int i = 0; i < queue->max; i++){
+        printf("%d ", queue->queue[i]);
+    }
+    printf("\n");
+}
+
+int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
     shared_mem_p mem = shmat(shmid, NULL, 0);
-	//printf("please? %d\n",mem->num_found);
 	 
     int retVal = 0;
     volatile int error = 0;
+    int split_number = 0;
 
     CURL *curl;
     CURLcode res;
@@ -81,38 +96,45 @@ int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
     RECV_BUF recv_buf;
-	
-    while(mem->num_found < 50 && !error){
-		char newUrl[100];
-		strcpy(newUrl, url);
-		char num_found_char[3];
-		sprintf(num_found_char, "%d", mem->num_found);
-		strcat(newUrl, num_found_char);
-		printf("%s\n", newUrl);	
-		
-		if(curl){
-        curl_easy_setopt(curl, CURLOPT_URL, newUrl);
+
+    if(curl){
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 		}
+    while(mem->num_found < 50 && !error){
+		char newUrl[100];
+		strcpy(newUrl, url);
+		char num_found_char[3];
+		sprintf(num_found_char, "%d", mem->num_found);
+		strcat(newUrl, num_found_char);
+		
+		curl_easy_setopt(curl, CURLOPT_URL, newUrl);
 		
         sem_wait(counter_sem);
         // printf("making png %d\n", mem->num_found);
+        split_number = mem->num_found;
         mem->num_found = mem->num_found + 1;
         sem_post(counter_sem);
         recv_buf_init(&recv_buf, BUF_SIZE);
         res = curl_easy_perform(curl);
         if(res == CURLE_OK){
             sem_wait(buffer_sem);
-            enqueue(mem->pngs, createPNG((U8*)recv_buf.buf, recv_buf.size));
+            simple_PNG_p res = createPNG((U8*)recv_buf.buf, recv_buf.size);
+            queue_entry_p entry = malloc(sizeof(struct queue_entry));
+            entry->entry = res;
+            entry->number = split_number;
+            enqueue(mem->pngs, entry);
+            print_queue(mem->pngs);
+            // printf("%s\n", newUrl);	
             // printf("making png %d\n", strip);
             //printf("curl from url %s\n", url);
             sem_post(buffer_sem);
         }
         else{
+            printf("uhoh\n");
             retVal = -1;
             error = 1;
         }	
@@ -124,12 +146,6 @@ int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
     return retVal;
 }
 
-int producer(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char *url){
-    shared_mem_p mem = shmat(shmid, NULL, 0);
-    fetch_png(shmid, counter_sem, buffer_sem, url);
-    shmdt(mem);
-    return 0;
-}
 int consumer(){
     printf("consuming...\n");
     return 0;
@@ -176,7 +192,7 @@ int main(int argc, char **argv){
     printf("found you bitch\n");
     mem->wait_time = sleep_time;
     mem->pngs = malloc(sizeof(struct png_queue));
-    mem->pngs->queue = malloc(buffer_size * sizeof(struct simple_PNG));
+    mem->pngs->queue = malloc(buffer_size * sizeof(struct queue_entry));
     mem->pngs->count = 0;
     mem->pngs->front = 0;
     mem->pngs->rear = -1;
@@ -185,9 +201,9 @@ int main(int argc, char **argv){
     // printf("%d\n", mem->num_found);
 
     sem_t *counter_sem = sem_open("counter", O_CREAT, 0644, 1);
-    sem_t *buffer_sem = sem_open("buffer", O_CREAT, 0644, 1);
+    sem_t *buffer_sem = sem_open("buffer", O_CREAT, 0644, buffer_size);
     sem_init(counter_sem, 0, 1);
-    sem_init(buffer_sem, 0, 1);
+    sem_init(buffer_sem, 0, buffer_size);
 
     pid_t prod_pid[num_producers];
     pid_t con_pid[num_consumers];
@@ -206,7 +222,7 @@ int main(int argc, char **argv){
             return 0;
         }
     }
-    while(mem->num_found < 5){
+    while(mem->num_found < 50){
         // printf("its now %d\n", *num_found);
         sleep(1);
     }
@@ -218,6 +234,10 @@ int main(int argc, char **argv){
         kill(con_pid[i], SIGTERM);
     }
     printf("Children are done\n");
+    // for(int i = 0; i < buffer_size; i++){
+    //     printf("%d\n", mem->pngs->queue[i]);
+    // }
+    print_queue(mem->pngs);
     //Delete shm
 		
     // pthread_t threads[num_threads];

@@ -39,7 +39,7 @@ typedef struct shared_mem{
     int offset;
     int num_found;
 	int num_inflated;
-	U8* final_buffer;
+	U8 final_buffer[final_height * (final_width * 4 + 1)];
     int head;
     struct png_queue pngs;
 } *shared_mem_p;
@@ -176,18 +176,16 @@ int consumer(int shmid, sem_t *dequeue_sem, png_queue_p queue){
 		sem_wait(dequeue_sem);
 		queue_entry_p strip = dequeue(queue);
 		sem_post(dequeue_sem);
-		printf("%d\n", strip != NULL);
 		if (strip != NULL){
 			simple_PNG_p newpng = createPNG(strip->entry);
-			printf("inflate strip %d", strip->number);
 			//mem->num_inflated += 1;
 			if (!inflateStrips(newpng, mem->final_buffer, &mem->offset)){
-				printf("inflated %d", strip->number);
+				printf("inflated %d\n", strip->number);
 				mem->num_inflated += 1;
 			}
 		}
 	}
-	printf("consume done");
+	printf("consume done\n");
 	shmdt(mem);
 	//raise (SIGTSTP);
     return 0;

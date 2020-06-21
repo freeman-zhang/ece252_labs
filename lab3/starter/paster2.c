@@ -69,11 +69,10 @@ simple_PNG_p dequeue(png_queue_p queue){
 }
 
 int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
-    printf("please?\n");
     shared_mem_p mem = shmat(shmid, NULL, 0);
-
+	//printf("please? %d\n",mem->num_found);
+	 
     int retVal = 0;
-    int strip = 0;
     volatile int error = 0;
 
     CURL *curl;
@@ -82,19 +81,25 @@ int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
     RECV_BUF recv_buf;
-
-    if(curl){
-        curl_easy_setopt(curl, CURLOPT_URL, url);
+	
+    while(mem->num_found < 50 && !error){
+		char newUrl[100];
+		strcpy(newUrl, url);
+		char num_found_char[3];
+		sprintf(num_found_char, "%d", mem->num_found);
+		strcat(newUrl, num_found_char);
+		printf("%s\n", newUrl);	
+		
+		if(curl){
+        curl_easy_setopt(curl, CURLOPT_URL, newUrl);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb_curl3);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb_curl);
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&recv_buf);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-    }
-    while(mem->num_found < 50 && !error){
+		}
+		
         sem_wait(counter_sem);
-        url[51] = mem->num_found;
-        strip = mem->num_found;
         // printf("making png %d\n", mem->num_found);
         mem->num_found = mem->num_found + 1;
         sem_post(counter_sem);
@@ -104,7 +109,7 @@ int fetch_png(int shmid, sem_t *counter_sem, sem_t *buffer_sem, char * url){
             sem_wait(buffer_sem);
             enqueue(mem->pngs, createPNG((U8*)recv_buf.buf, recv_buf.size));
             // printf("making png %d\n", strip);
-            printf("curl from url %s\n", url);
+            //printf("curl from url %s\n", url);
             sem_post(buffer_sem);
         }
         else{

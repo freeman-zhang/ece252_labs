@@ -56,7 +56,7 @@ int enqueue(png_queue_p queue, struct recv_buf buf){
         if(queue->rear == queue->max - 1){
             queue->rear = -1;
         }
-        ++queue->rear;
+        queue->rear = queue->rear + 1;
         memcpy(queue->queue[queue->rear].entry, buf.buf, buf.max_size);
         queue->queue[queue->rear].number = buf.seq;
         // printf("inserting number %d into index %d\n", queue->queue[queue->rear].number, queue->rear);
@@ -119,9 +119,10 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
         
         // printf("making png %d\n", *num_found);
         *num_found = *num_found + 1;
-        sem_post(counter_sem);
+        
         recv_buf_init(&recv_buf, BUF_SIZE);
         response = curl_easy_perform(curl);
+        sem_post(counter_sem);
         if(response == CURLE_OK){
             sem_wait(buffer_sem);
             // printf("%d\n", recv_buf.seq);
@@ -134,6 +135,7 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 
 
             sem_post(enqueue_sem);
+            // printf("posting\n");
             sem_post(buffer_sem);
         }
         else{
@@ -147,12 +149,13 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
         //     printf("%x ", queue->queue[0].entry[i]);
         // }
         // printf("\n");
+        
     }
     // printf("what\n");
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
     // printf("%x\n", queue->queue[0].entry[0]);
-	// printf("Kms\n");
+	printf("Kms\n");
 	raise (SIGTSTP);
 	printf("Am i dead yet?\n");
     return retVal;
@@ -259,6 +262,17 @@ int main(int argc, char **argv){
         printf("%d ", mem->queue[i].number);
     }
     printf("\n");
+
+    // simple_PNG_p pngs[50] = {NULL};
+    // for(int i = 0; i < 50; i++){
+    //     pngs[i] = createPNG(mem->queue[i].entry, 5);
+    // }
+
+    // if(catPNG(pngs, 50, final_height, final_width) != 0){
+    //     printf("Error occured when concatenating PNGs.\n");
+    //     return -1;
+    // }
+
     // print_queue(mem->pngs);
     //Delete shm
 		

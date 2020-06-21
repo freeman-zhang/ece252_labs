@@ -194,7 +194,7 @@ int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_
     // printf("%lu\n", tim.tv_nsec);
 	while (mem->num_inflated < 50){
         msleep(mem->wait_time);
-        printf("Consuming %d\n", mem->wait_time);
+        //printf("Consuming %d\n", mem->wait_time);
 		sem_wait(dequeue_sem);
 		queue_entry_p strip = dequeue(queue);
 		sem_post(dequeue_sem);
@@ -202,7 +202,7 @@ int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_
 			simple_PNG_p newpng = createPNG(strip->entry);
 			//mem->num_inflated += 1;
 			if (!inflateStrips(newpng, mem->final_buffer, &mem->offset)){
-				printf("inflated %d\n", strip->number);
+				//printf("inflated %d\n", strip->number);
 				mem->num_inflated += 1;
 			}
             sem_post(buffer_sem);
@@ -232,9 +232,7 @@ int main(int argc, char **argv){
 	int sleep_time = atoi(argv[4]); 		//X
     int img_num = atoi(argv[5]);			//N
 		
-    int thread_error = 0;
-    thread_error++;
-    sleep_time++;
+    //int thread_error = 0;
 
 	
     char url[3][100];
@@ -328,9 +326,8 @@ int main(int argc, char **argv){
 	catPNG(png, shared->final_buffer, final_height, final_width, &shared->offset);
 
     gettimeofday(&end, NULL);
-    unsigned int t = end.tv_usec - begin.tv_usec;
-    // printf("test\n");
-    printf("%f\n", (double)t / 3000);
+    double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
+    printf("paster2 execution time: %.2f seconds\n", elapsed);
 
     // simple_PNG_p pngs[50] = {NULL};
     // for(int i = 0; i < 50; i++){

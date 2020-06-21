@@ -327,7 +327,7 @@ int main(int argc, char **argv){
 
     gettimeofday(&end, NULL);
     double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
-    printf("paster2 execution time: %.2f seconds\n", elapsed);
+    printf("paster2 execution time: %.2f\n", elapsed);
 
     // simple_PNG_p pngs[50] = {NULL};
     // for(int i = 0; i < 50; i++){

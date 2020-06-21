@@ -6,6 +6,7 @@
 #include <pthread.h>            /* for pthread                  */
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 #include "png_util/lab_png.h"   /* simple PNG data structures   */
 #include "cURL/curl_util.h"     /* for header and write cb      */
 #include <sys/shm.h>
@@ -44,6 +45,26 @@ typedef struct shared_mem{
     int head;
     struct png_queue pngs;
 } *shared_mem_p;
+
+int msleep(long tms){
+    struct timespec tim;
+    int ret;
+ 
+    if (tms < 0)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+ 
+    tim.tv_sec = tms / 1000;
+    tim.tv_nsec = (tms % 1000) * 1000000;
+ 
+    do {
+        ret = nanosleep(&tim, &tim);
+    } while (ret && errno == EINTR);
+ 
+    return ret;
+}
 
 int empty(png_queue_p queue){
     return queue->count == 0;
@@ -115,7 +136,6 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 		}
     while(*num_found < NUM_PNGS && !error){
         // printf("cunt licker\n");
-        usleep(1);
         sem_wait(counter_sem);
 		char newUrl[100];
 		strcpy(newUrl, url);
@@ -171,13 +191,10 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 
 int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_p queue){
     // printf("consuming...\n");
-    struct timespec tim;
-    tim.tv_sec = mem->wait_time / 1000;
-    tim.tv_nsec = (mem->wait_time / 1000) * 1000000;
     // printf("%lu\n", tim.tv_nsec);
 	while (mem->num_inflated < 50){
-        nanosleep(&tim, NULL);
-        // printf("Consuming %d\n", mem->num_inflated);
+        msleep(mem->wait_time);
+        printf("Consuming %d\n", mem->wait_time);
 		sem_wait(dequeue_sem);
 		queue_entry_p strip = dequeue(queue);
 		sem_post(dequeue_sem);

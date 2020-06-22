@@ -74,7 +74,6 @@ int full(png_queue_p queue){
     return queue->count == queue->max;
 }
 
-//need sem for this
 int enqueue(png_queue_p queue, struct recv_buf buf){
     if(!full(queue)){
         if(queue->rear == queue->max - 1){
@@ -83,7 +82,6 @@ int enqueue(png_queue_p queue, struct recv_buf buf){
         queue->rear = queue->rear + 1;
         memcpy(queue->queue[queue->rear].entry, buf.buf, buf.max_size);
         queue->queue[queue->rear].number = buf.seq;
-        // printf("inserting number %d into index %d\n", queue->queue[queue->rear].number, queue->rear);
 
         queue->count++;
     }
@@ -135,6 +133,7 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 		}
     while(*num_found < NUM_PNGS && !error){
+
         // printf("cunt licker\n");
 		//printf("prod id is %d\n", getpid());
 		char newUrl[100];
@@ -147,24 +146,19 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 		sem_post(counter_sem);
 		
 		curl_easy_setopt(curl, CURLOPT_URL, newUrl);
+
         //printf("making png %d\n", *num_found);
 		sem_wait(recv_sem);
+
         recv_buf_init(&recv_buf, BUF_SIZE);
         response = curl_easy_perform(curl);
         sem_post(recv_sem);
         if(response == CURLE_OK){
             sem_wait(buffer_sem);
-            // printf("%d\n", recv_buf.seq);
             sem_wait(enqueue_sem);
 
             enqueue(queue, recv_buf);
-            // printf("curl from url %s\n", newUrl);
-            // printf("%d\n", recv_buf.seq);
-
-
             sem_post(enqueue_sem);
-            // printf("posting\n");
-            
         }
         else{
             printf("uhoh\n");
@@ -172,29 +166,21 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
             error = 1;
         }	
         recv_buf_cleanup(&recv_buf);
-        // printf("what\n");
-        // for(int i = 0; i < 21; i++){
-        //     printf("%x ", queue->queue[0].entry[i]);
-        // }
-        // printf("\n");
         
     }
-    // printf("what\n");
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
     // printf("%x\n", queue->queue[0].entry[0]);
 	//printf("Kms\n");
 	//raise (SIGTSTP);
 	//printf("%d\n", *num_found);
+
     return retVal;
 }
 
 int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_p queue){
-    // printf("consuming...\n");
-    // printf("%lu\n", tim.tv_nsec);
 	while (mem->num_inflated < 50){
         msleep(mem->wait_time);
-        //printf("Consuming %d\n", mem->wait_time);
 		sem_wait(dequeue_sem);
 		queue_entry_p strip = dequeue(queue);
 		sem_post(dequeue_sem);
@@ -208,14 +194,10 @@ int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_
             sem_post(buffer_sem);
 		}
 	}
-	// printf("consume done\n");
 	shmdt(mem);
-	//raise (SIGTSTP);
     return 0;
 }
 
-//TODO load balancing
-//TODO synchronization to avoid memory leaks from creating 2 same pngs
 int main(int argc, char **argv){
 
     if(argc < 6){
@@ -231,9 +213,6 @@ int main(int argc, char **argv){
 	int num_consumers = atoi(argv[3]);		//C
 	int sleep_time = atoi(argv[4]); 		//X
     int img_num = atoi(argv[5]);			//N
-		
-    //int thread_error = 0;
-
 	
     char url[3][100];
 	strcpy(url[0], "http://ece252-1.uwaterloo.ca:2530/image?img=");
@@ -258,16 +237,11 @@ int main(int argc, char **argv){
         perror("shmget");
     }
 
-    //initilazing shared memory
     png_queue_p mem = shmat(queue_struct_shmid, NULL, 0);
     queue_entry_p entries = shmat(queue_shmid, NULL, 0);
     int *num_found = shmat(counter_shmid, NULL, 0);
 	shared_mem_p shared = shmat(shmid, NULL, 0);
     *num_found = 0;
-    // printf("found you bitch\n");
-    // mem->wait_time = sleep_time;
-    // mem->queue;
-    // mem->queue = malloc(sizeof(struct png_queue) * buffer_size);
     mem->queue = entries;
     mem->count = 0;
     mem->front = 0;
@@ -275,7 +249,6 @@ int main(int argc, char **argv){
     mem->max = buffer_size;
     shared->wait_time = sleep_time;
 	shared->num_inflated = 0;
-    // printf("%d\n", mem->num_found);
 
     sem_t *counter_sem = sem_open("counter", O_CREAT, 0644, 1);
     sem_t *buffer_sem = sem_open("buffer", O_CREAT, 0644, buffer_size);
@@ -306,9 +279,9 @@ int main(int argc, char **argv){
         }
     }
     while(*num_found < NUM_PNGS || shared->num_inflated < 50){
-        // printf("its now %d\n", mem->num_found);
         sleep(1);
     }
+
     for(int i = 0; i < num_producers; i++){
         // printf("%d\n", prod_pid[i]);
         kill(prod_pid[i], SIGTERM);
@@ -330,47 +303,11 @@ int main(int argc, char **argv){
 
     gettimeofday(&end, NULL);
     double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
-    printf("paster2 execution time: %.2f\n", elapsed);
+    printf("paster2 execution time: %.2f seconds\n", elapsed);
 
-    // simple_PNG_p pngs[50] = {NULL};
-    // for(int i = 0; i < 50; i++){
-    //     pngs[i] = createPNG(mem->queue[i].entry, 5);
-    // }
-
-    // if(catPNG(pngs, 50, final_height, final_width) != 0){
-    //     printf("Error occured when concatenating PNGs.\n");
-    //     return -1;
-    // }
-
-    // print_queue(mem->pngs);
-    //Delete shm
-		
-    // pthread_t threads[num_threads];
-    // void *vr[num_threads];
-
-    // for(int i = 0; i < num_threads; i++){
-    //     pthread_create(&threads[i], NULL, run, url[i%3]);
-    // }
-    // for(int i = 0; i < num_threads; i++){
-    //     pthread_join(threads[i], &vr[i]);
-    //     if(*(int*)vr[i] == -1){
-    //         printf("ERROR: thread %d failed, program will abort.\n", *(int*)vr[i]);
-    //         thread_error = 1;
-    //     }
-    //     free(vr[i]);
-    // }
-
-    // if(thread_error){
-    //     return -1;
-    // }
-	
-	// if(catPNG(pngs, num_pngs, final_height, final_width) != 0){
-    //     printf("Error occured when concatenating PNGs.\n");
-    //     return -1;
-    // }
-	
-	// for(int i = 0; i < num_pngs; i++){
-    //     freePNG(pngs[i]);
-    // }
+    shmdt(mem);
+    shmdt(entries);
+    shmdt(num_found);
+    shmdt(shared);
     return 0;
 }

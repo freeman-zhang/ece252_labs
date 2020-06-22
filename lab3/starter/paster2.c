@@ -133,9 +133,6 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 		}
     while(*num_found < NUM_PNGS && !error){
-
-        // printf("cunt licker\n");
-		//printf("prod id is %d\n", getpid());
 		char newUrl[100];
 		strcpy(newUrl, url);
 		char num_found_char[3];
@@ -147,7 +144,6 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 		
 		curl_easy_setopt(curl, CURLOPT_URL, newUrl);
 
-        //printf("making png %d\n", *num_found);
 		sem_wait(recv_sem);
 
         recv_buf_init(&recv_buf, BUF_SIZE);
@@ -170,11 +166,6 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
     }
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
-    // printf("%x\n", queue->queue[0].entry[0]);
-	//printf("Kms\n");
-	//raise (SIGTSTP);
-	//printf("%d\n", *num_found);
-
     return retVal;
 }
 
@@ -186,9 +177,7 @@ int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_
 		sem_post(dequeue_sem);
 		if (strip != NULL){
 			simple_PNG_p newpng = createPNG(strip->entry);
-			//mem->num_inflated += 1;
 			if (!inflateStrips(newpng, mem->final_buffer, &strip->number)){
-				// printf("consumer %d inflated strip %d\n", getpid(), strip->number);
 				mem->num_inflated += 1;
 			}
             sem_post(buffer_sem);

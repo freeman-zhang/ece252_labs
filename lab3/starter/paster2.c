@@ -188,7 +188,7 @@ int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_
 			simple_PNG_p newpng = createPNG(strip->entry);
 			//mem->num_inflated += 1;
 			if (!inflateStrips(newpng, mem->final_buffer, &strip->number)){
-				//printf("inflated %d\n", strip->number);
+				// printf("consumer %d inflated strip %d\n", getpid(), strip->number);
 				mem->num_inflated += 1;
 			}
             sem_post(buffer_sem);
@@ -283,27 +283,20 @@ int main(int argc, char **argv){
     }
 
     for(int i = 0; i < num_producers; i++){
-        // printf("%d\n", prod_pid[i]);
         kill(prod_pid[i], SIGTERM);
     }
     for(int i = 0; i < num_consumers; i++){
         kill(con_pid[i], SIGTERM);
     }
 
-    // printf("Children are done\n");
-    // printf("%x\n", mem->pngs->queue[0]);
-    // for(int i = 0; i < buffer_size; i++){
-    //     printf("%d ", mem->queue[i].number);
-    // }
-    // printf("\n");
 	U8* png_buf = entries[0].entry;
 	simple_PNG_p png = createPNG(png_buf);
 	int final_offset = 50;
 	catPNG(png, shared->final_buffer, final_height, final_width, &final_offset);
 
     gettimeofday(&end, NULL);
-    double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
-    printf("paster2 execution time: %.2f seconds\n", elapsed);
+    long double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
+    printf("paster2 execution time: %6Lf seconds\n", elapsed);
 
     shmdt(mem);
     shmdt(entries);

@@ -66,8 +66,10 @@ exec_producer ()
     xx=1
     while [ ${xx} -le ${X_TIMES} ]
     do
+        echo ${PROGRAM} ${BUFFER_SIZE} ${NUM_P} ${NUM_C} ${NUM2SLEEP} ${IMG}
         cmd="${PROGRAM} ${BUFFER_SIZE} ${NUM_P} ${NUM_C} ${NUM2SLEEP} ${IMG}"
         str=`$cmd | tail -1 | awk -F' ' '{print $4}'`
+        echo $str
         echo $str  >> ${O_FILE}
         xx=`expr $xx + 1`
     done

@@ -165,7 +165,7 @@ int catPNG(simple_PNG_p png, U8* final_buffer, U32 height, U32 width, int* offse
     U8 *decompressed_buffer = malloc(decompressed_size);
     U64 new_size = 0;
 
-    ret = mem_def(decompressed_buffer, &new_size, final_buffer, *offset, Z_DEFAULT_COMPRESSION);
+    ret = mem_def(decompressed_buffer, &new_size, final_buffer, (*offset * 9606), Z_DEFAULT_COMPRESSION);
 
     if (ret == 0) { /* success */
         // printf("original len = %d, len_def = %lu\n");
@@ -286,12 +286,12 @@ int catPNG(simple_PNG_p png, U8* final_buffer, U32 height, U32 width, int* offse
 int inflateStrips(simple_PNG_p png, U8* final_buffer, int *offset){
 	U64 output_length = 0;
 	int ret = 0;
-    ret = mem_inf(final_buffer + (*offset * sizeof(U8)), &output_length, png->p_IDAT->p_data, png->p_IDAT->length);
+    ret = mem_inf(final_buffer + (*offset * 9606), &output_length, png->p_IDAT->p_data, png->p_IDAT->length);
     if (ret == 0) { /* success */
     // printf("original len = %d, len_def = %lu, len_inf = %lu\n", final_size, pngs[i]->p_IDAT->length, output_length);
     } else { /* failure */
         fprintf(stderr,"mem_def failed. ret = %d.\n", ret);
     }
-    *offset += output_length;
+    //*offset += output_length;
 	return ret;
 }

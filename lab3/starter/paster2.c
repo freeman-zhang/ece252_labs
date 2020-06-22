@@ -116,7 +116,7 @@ void print_queue(png_queue_p queue){
     printf("\n");
 }
 
-int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffer_sem, sem_t *enqueue_sem, char * url){
+int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffer_sem, sem_t *enqueue_sem, sem_t *recv_sem, char * url){
     int retVal = 0;
     volatile int error = 0;
 
@@ -136,27 +136,26 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 		}
     while(*num_found < NUM_PNGS && !error){
         // printf("cunt licker\n");
-        sem_wait(counter_sem);
+		//printf("prod id is %d\n", getpid());
 		char newUrl[100];
 		strcpy(newUrl, url);
 		char num_found_char[3];
+		sem_wait(counter_sem);
 		sprintf(num_found_char, "%d", *num_found);
 		strcat(newUrl, num_found_char);
+		*num_found = *num_found + 1;
+		sem_post(counter_sem);
 		
 		curl_easy_setopt(curl, CURLOPT_URL, newUrl);
-		
-        
-        // printf("making png %d\n", *num_found);
-        *num_found = *num_found + 1;
-        
+        //printf("making png %d\n", *num_found);
+		sem_wait(recv_sem);
         recv_buf_init(&recv_buf, BUF_SIZE);
         response = curl_easy_perform(curl);
-        sem_post(counter_sem);
+        sem_post(recv_sem);
         if(response == CURLE_OK){
             sem_wait(buffer_sem);
             // printf("%d\n", recv_buf.seq);
             sem_wait(enqueue_sem);
-
 
             enqueue(queue, recv_buf);
             // printf("curl from url %s\n", newUrl);
@@ -184,8 +183,9 @@ int producer(png_queue_p queue, int *num_found, sem_t *counter_sem, sem_t *buffe
 	curl_easy_cleanup(curl);
     curl_global_cleanup();
     // printf("%x\n", queue->queue[0].entry[0]);
-	// printf("Kms\n");
+	//printf("Kms\n");
 	//raise (SIGTSTP);
+	//printf("%d\n", *num_found);
     return retVal;
 }
 
@@ -201,7 +201,7 @@ int consumer(shared_mem_p mem, sem_t *dequeue_sem, sem_t *buffer_sem, png_queue_
 		if (strip != NULL){
 			simple_PNG_p newpng = createPNG(strip->entry);
 			//mem->num_inflated += 1;
-			if (!inflateStrips(newpng, mem->final_buffer, &mem->offset)){
+			if (!inflateStrips(newpng, mem->final_buffer, &strip->number)){
 				//printf("inflated %d\n", strip->number);
 				mem->num_inflated += 1;
 			}
@@ -281,10 +281,12 @@ int main(int argc, char **argv){
     sem_t *buffer_sem = sem_open("buffer", O_CREAT, 0644, buffer_size);
     sem_t *enqueue_sem = sem_open("enqueue", O_CREAT, 0644, 1);
 	sem_t *dequeue_sem = sem_open("dequeue", O_CREAT, 0644, 1);
-    sem_init(counter_sem, 0, 1);
-    sem_init(buffer_sem, 0, buffer_size);
-    sem_init(enqueue_sem, 0, 1);
-	sem_init(dequeue_sem, 0, 1);
+	sem_t *recv_sem = sem_open("receive", O_CREAT, 0644, 1);
+    sem_init(counter_sem, 1, 1);
+    sem_init(buffer_sem, 1, buffer_size);
+    sem_init(enqueue_sem, 1, 1);
+	sem_init(dequeue_sem, 1, 1);
+	sem_init(recv_sem, 1, 1);
 
     pid_t prod_pid[num_producers];
     pid_t con_pid[num_consumers];
@@ -292,7 +294,7 @@ int main(int argc, char **argv){
     for(int i = 0; i < num_producers; i++){
         prod_pid[i] = fork();
         if(prod_pid[i] == 0){
-            producer(mem, num_found, counter_sem, buffer_sem, enqueue_sem, url[i % 3]);
+            producer(mem, num_found, counter_sem, buffer_sem, enqueue_sem, recv_sem, url[i % 3]);
             return 0;
         }
     }
@@ -307,13 +309,13 @@ int main(int argc, char **argv){
         // printf("its now %d\n", mem->num_found);
         sleep(1);
     }
-    //for(int i = 0; i < num_producers; i++){
-    //    // printf("%d\n", prod_pid[i]);
-    //    kill(prod_pid[i], SIGTERM);
-    //}
-    //for(int i = 0; i < num_consumers; i++){
-    //    kill(con_pid[i], SIGTERM);
-    //}
+    for(int i = 0; i < num_producers; i++){
+        // printf("%d\n", prod_pid[i]);
+        kill(prod_pid[i], SIGTERM);
+    }
+    for(int i = 0; i < num_consumers; i++){
+        kill(con_pid[i], SIGTERM);
+    }
 
     // printf("Children are done\n");
     // printf("%x\n", mem->pngs->queue[0]);
@@ -323,7 +325,8 @@ int main(int argc, char **argv){
     // printf("\n");
 	U8* png_buf = entries[0].entry;
 	simple_PNG_p png = createPNG(png_buf);
-	catPNG(png, shared->final_buffer, final_height, final_width, &shared->offset);
+	int final_offset = 50;
+	catPNG(png, shared->final_buffer, final_height, final_width, &final_offset);
 
     gettimeofday(&end, NULL);
     double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);

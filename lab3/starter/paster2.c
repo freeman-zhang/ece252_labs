@@ -284,8 +284,8 @@ int main(int argc, char **argv){
 	catPNG(png, shared->final_buffer, final_height, final_width, &final_offset);
 
     gettimeofday(&end, NULL);
-    long double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
-    printf("paster2 execution time: %6Lf seconds\n", elapsed);
+    double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
+    printf("paster2 execution time: %6lf seconds\n", elapsed);
 
     shmdt(mem);
     shmdt(entries);

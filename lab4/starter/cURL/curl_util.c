@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "curl_util.h"
+
 #define BUF_SIZE 1048576 /* 1024*1024 = 1M */
 
 #define ECE252_HEADER "X-Ece252-Fragment: "
@@ -188,4 +189,46 @@ void cleanup(CURL *curl, RECV_BUF *ptr)
     curl_easy_cleanup(curl);
     curl_global_cleanup();
     recv_buf_cleanup(ptr);
+}
+
+int find_http(char *buf, int size, int follow_relative_links, const char *base_url)
+{
+
+    int i;
+    htmlDocPtr doc;
+    xmlChar *xpath = (xmlChar *)"//a/@href";
+    xmlNodeSetPtr nodeset;
+    xmlXPathObjectPtr result;
+    xmlChar *href;
+
+    if (buf == NULL)
+    {
+        return 1;
+    }
+
+    doc = mem_getdoc(buf, size, base_url);
+    result = getnodeset(doc, xpath);
+    if (result)
+    {
+        nodeset = result->nodesetval;
+        for (i = 0; i < nodeset->nodeNr; i++)
+        {
+            href = xmlNodeListGetString(doc, nodeset->nodeTab[i]->xmlChildrenNode, 1);
+            if (follow_relative_links)
+            {
+                xmlChar *old = href;
+                href = xmlBuildURI(href, (xmlChar *)base_url);
+                xmlFree(old);
+            }
+            if (href != NULL && !strncmp((const char *)href, "http", 4))
+            {
+                printf("href: %s\n", href);
+            }
+            xmlFree(href);
+        }
+        xmlXPathFreeObject(result);
+    }
+    xmlFreeDoc(doc);
+    xmlCleanupParser();
+    return 0;
 }

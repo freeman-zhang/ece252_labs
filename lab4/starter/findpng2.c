@@ -3,7 +3,6 @@
 #include <unistd.h> /* for getopt                   */
 #include <getopt.h> /* to get rid of optarg linting */
 #include <string.h>
-#include <curl/curl.h>        /* for cURL                     */
 #include <pthread.h>          /* for pthread                  */
 #include <search.h>           /* for hcreate */
 #include "png_util/lab_png.h" /* simple PNG data structures   */
@@ -21,7 +20,7 @@ typedef struct char_queue
     int rear;
     int count;
     int max;
-    char urls[100][100];
+    char *urls[100];
 } * char_queue_p;
 
 //global vars
@@ -42,9 +41,7 @@ char* dequeue(char_queue_p queue)
     char *returl;
     if (!empty(queue))
     {
-        for(int i = 0; i < strlen(queue->urls[queue->front]); ++i){
-            returl[i] = queue->urls[queue->front][i];
-        }   
+        memcpy(&returl, &queue->urls[queue->front], sizeof(queue->urls[queue->front]));
 
         queue->front++;
         if (queue->front == queue->max)
@@ -71,8 +68,9 @@ int enqueue(char_queue_p queue, char* url)
     else{
         queue->rear = queue->rear + 1;
     }
-    
-    strcpy(queue->urls[queue->rear], url);
+
+    memcpy(&queue->urls[queue->rear], &url, sizeof(url));
+    //strcpy(queue->urls[queue->rear], url);
     queue->count++;
     return 0;
 }
@@ -110,7 +108,7 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf)
     ENTRY hurl, *hret;
     char *url = NULL; 
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &url);
-    //find_http(p_recv_buf->buf, p_recv_buf->size, 1, url); 
+    find_http(p_recv_buf->buf, p_recv_buf->size, 1, url); 
     hurl.key = url;
     int n = 0;
     if (strstr(ct, CT_HTML))
@@ -122,6 +120,7 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf)
         {
             //add to frontier;
             enqueue(frontier, url);
+            printf("enqed\n");
             //add to ht
             hurl.data = url;
             hsearch_r(hurl, ENTER, &hret, visited);

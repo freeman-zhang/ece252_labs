@@ -1,7 +1,9 @@
-CC = gcc
 LD = gcc
-CFLAGS = -Wall -g -std=c99 -ggdb3
-LDLIBS = -lz -lcurl -pthread
+LDFLAGS = -Wall -g -std=gnu99 -ggdb3
+LDLIBS_XML2 = $(shell xml2-config --libs)
+LDLIBS_CURL = $(shell curl-config --libs)
+LDLIBS = $(LDLIBS_XML2) $(LDLIBS_CURL) -lz -pthread
+
 
 LIB_UTIL = ./png_util/zutil.c ./png_util/crc.c ./png_util/lab_png.c ./cURL/curl_util.c 
 
@@ -12,7 +14,7 @@ default: all
 all: ${TARGETS}
 
 findpng2: findpng2.c $(LIB_UTIL)
-	$(LD) $(CFLAGS) -o $@ $^ $(LDLIBS) 
+	$(LD) -o $@ $^ $(LDLIBS) $(LDFLAGS)
 
 .PHONY: clean
 clean:

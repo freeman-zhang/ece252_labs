@@ -1,9 +1,13 @@
 #include <stdio.h>
 #include <string.h>
-#include <curl/curl.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <curl/curl.h>
+#include <libxml/HTMLparser.h>
+#include <libxml/parser.h>
+#include <libxml/xpath.h>
+#include <libxml/uri.h>
 
 #pragma once
 
@@ -23,3 +27,4 @@ int recv_buf_cleanup(RECV_BUF *ptr);
 int write_file(const char *path, const void *in, size_t len);
 CURL *easy_handle_init(RECV_BUF *ptr, const char *url);
 void cleanup(CURL *curl, RECV_BUF *ptr);
+int find_http(char *buf, int size, int follow_relative_links, const char *base_url);

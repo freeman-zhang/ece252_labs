@@ -8,11 +8,21 @@
 #include "png_util/lab_png.h" /* simple PNG data structures   */
 #include "cURL/curl_util.h"   /* for header and write cb      */
 #include <semaphore.h>
+#include <time.h>
 
 #define CT_PNG "image/png"
 #define CT_HTML "text/html"
 #define VISITED_HT_SIZE 100
 
+#define _GNU_SOURCE
+
+typedef struct char_queue
+{
+    int front;
+    int rear;
+    int count;
+    char *urls[100];
+} * char_queue_p;
 
 //global vars
 char_queue_p frontier;
@@ -20,18 +30,29 @@ struct hsearch_data *visited;
 int png_count = 0;
 int num_pngs = 50;
 char logfile[100] = "";
+int anyone_running = 0;
+//semaphores
+sem_t eq_sem;
+sem_t dq_sem;
+sem_t count_sem;
+sem_t ht_sem;
+sem_t log_sem;
+sem_t png_sem;
+sem_t running_sem;
 
 //function declarations
-int find_http(RECV_BUF *p_recv_buf, int follow_relative_links, const char *base_url, CURL *curl_handle);
-int check_link(char* url, CURL *curl_handle, RECV_BUF *p_recv_buf);
-
+int find_http(char *buf, int size, int follow_relative_links, const char *base_url, CURL *curl_handle);
+int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf);
+int hcreate_r(size_t nel, struct hsearch_data *htab);
+int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab);
+void hdestroy_r(struct hsearch_data *htab);
 
 int empty(char_queue_p queue)
 {
     return queue->count == 0;
 }
 
-char* dequeue(char_queue_p queue)
+char *dequeue(char_queue_p queue)
 {
     char *returl;
     if (!empty(queue))
@@ -39,10 +60,6 @@ char* dequeue(char_queue_p queue)
         memcpy(&returl, &queue->urls[queue->front], sizeof(queue->urls[queue->front]));
         //free(queue->urls[queue->front]);
         queue->front++;
-        if (queue->front == queue->max)
-        {
-            queue->front = 0;
-        }
         queue->count--;
     }
     else
@@ -52,14 +69,15 @@ char* dequeue(char_queue_p queue)
     return returl;
 }
 
-int enqueue(char_queue_p queue, char* url)
+int enqueue(char_queue_p queue, char *url)
 {
     if (empty(queue))
     {
         queue->front = 0;
         queue->rear = 0;
     }
-    else{
+    else
+    {
         queue->rear = queue->rear + 1;
     }
 
@@ -69,56 +87,85 @@ int enqueue(char_queue_p queue, char* url)
     return 0;
 }
 
-int check_link(char* url, CURL *curl_handle, RECV_BUF *p_recv_buf){
+int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
+{
     CURLcode res;
     char *ct = NULL;
-    
+
     res = curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ct);
     if (res != CURLE_OK || ct == NULL)
     {
         fprintf(stderr, "Failed obtain Content-Type\n");
         return 2;
     }
-    
+
     //printf("link: %s, type: %s\n", url, ct);
     ENTRY hurl, *hret;
     hurl.key = url;
     hurl.data = url;
     if (strstr(ct, CT_HTML))
     {
+        sem_wait(&ht_sem);
         hsearch_r(hurl, ENTER, &hret, visited);
-        find_http(p_recv_buf, 1, url, curl_handle);
+        sem_post(&ht_sem);
+
+        find_http(p_recv_buf->buf, p_recv_buf->size, 1, url, curl_handle);
+
         if (strcmp(logfile, ""))
         {
             //write to logfile;
+            sem_wait(&log_sem);
             FILE *log;
             log = fopen(logfile, "a");
             fputs(url, log);
             fputs("\n", log);
             fclose(log);
+            sem_post(&log_sem);
         }
     }
     else if (strstr(ct, CT_PNG))
     {
         //printf("png yes \n");
         //add to ht
+        sem_wait(&ht_sem);
         hsearch_r(hurl, ENTER, &hret, visited);
-        png_count++;
+        sem_post(&ht_sem);
 
         //write to png_urls.txt;
-        FILE *png_file;
-        png_file = fopen("png_urls.txt", "a");
-        fputs(url, png_file);
-        fputs("\n", png_file);
-        fclose(png_file);
-  
+        sem_wait(&png_sem);
+        sem_wait(&count_sem);
+        if (png_count < num_pngs)
+        {
+            png_count++;
+            sem_post(&count_sem);
+            FILE *png_file;
+            png_file = fopen("png_urls.txt", "a");
+            fputs(url, png_file);
+            fputs("\n", png_file);
+            fclose(png_file);
+        }
+        else
+        {
+            sem_post(&count_sem);
+        }
+        sem_post(&png_sem);
 
+        if (strcmp(logfile, ""))
+        {
+            //write to logfile;
+            sem_wait(&log_sem);
+            FILE *log;
+            log = fopen(logfile, "a");
+            fputs(url, log);
+            fputs("\n", log);
+            fclose(log);
+            sem_post(&log_sem);
+        }
     }
     return 0;
 }
 
-
-int find_http(RECV_BUF *p_recv_buf, int follow_relative_links, const char *base_url, CURL *curl_handle)
+int find_http(char *buf, int size, int follow_relative_links, const char *base_url, CURL *curl_handle)
 {
 
     int i;
@@ -128,12 +175,12 @@ int find_http(RECV_BUF *p_recv_buf, int follow_relative_links, const char *base_
     xmlXPathObjectPtr result;
     xmlChar *href;
 
-    if (p_recv_buf->buf == NULL)
+    if (buf == NULL)
     {
         return 1;
     }
 
-    doc = mem_getdoc(p_recv_buf->buf, p_recv_buf->size, base_url);
+    doc = mem_getdoc(buf, size, base_url);
     result = getnodeset(doc, xpath);
     if (result)
     {
@@ -151,19 +198,22 @@ int find_http(RECV_BUF *p_recv_buf, int follow_relative_links, const char *base_
             {
                 //printf("href: %s\n", href);
                 //handling logic for what to do with link found
-                char * url = (char*)href;
+                char *url = (char *)href;
                 ENTRY hurl, *hret;
                 hurl.key = url;
                 hurl.data = url;
                 // check if url is in ht
+                sem_wait(&ht_sem);
                 if (!hsearch_r(hurl, FIND, &hret, visited))
                 {
                     //add to ht
+                    sem_wait(&eq_sem);
                     enqueue(frontier, url);
+                    sem_post(&eq_sem);
                     hsearch_r(hurl, ENTER, &hret, visited);
                     //check_link(url, curl_handle);
-             
                 }
+                sem_post(&ht_sem);
             }
             //xmlFree(href);
         }
@@ -174,57 +224,90 @@ int find_http(RECV_BUF *p_recv_buf, int follow_relative_links, const char *base_
     return 0;
 }
 
-
 void *crawler(void *ignore)
 {
-    
-    while (!empty(frontier) && png_count < num_pngs){
-        
-        CURL *curl_handle;
-        CURLcode res;
-        RECV_BUF recv_buf;
-        curl_global_init(CURL_GLOBAL_DEFAULT);
-        
-        // dq a url from frontier
-        //printf("%d\n", empty(frontier));
-        char *url = dequeue(frontier); 
-        //printf("checking %s\n", url);
-        // curl call to url
-        
-        curl_handle = easy_handle_init(&recv_buf, url);
-        if (curl_handle == NULL)
-        {
-            fprintf(stderr, "Curl initialization failed. Exiting...\n");
-            curl_global_cleanup();
-            abort();
-        }
-        
-        //printf("url: %s\n", url);
-        res = curl_easy_perform(curl_handle);
+    CURL *curl_handle;
+    CURLcode res;
+    RECV_BUF recv_buf;
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 
-        if (res != CURLE_OK)
+    while ((!empty(frontier) || anyone_running) && png_count < num_pngs)
+    {
+        sem_post(&count_sem);
+        sem_post(&running_sem);
+        if (!empty(frontier))
         {
-            if (strcmp(logfile, ""))
+            char *url = malloc(sizeof(char) * 100);
+            url = dequeue(frontier);
+            sem_post(&dq_sem);
+            sem_post(&eq_sem);
+
+            sem_wait(&running_sem);
+            anyone_running += 1;
+            sem_post(&running_sem);
+
+            // dq a url from frontier
+            //printf("%d\n", empty(frontier));
+
+            printf("");
+            //printf("checking %s\n", url);
+            // curl call to url
+
+            //if url is not NULL
+            if (url)
             {
-                //write to logfile;
-                FILE *log;
-                log = fopen(logfile, "a");
-                fputs(url, log);
-                fputs("\n", log);
-                fclose(log);
+                curl_handle = easy_handle_init(&recv_buf, url);
+                if (curl_handle == NULL)
+                {
+                    fprintf(stderr, "Curl initialization failed. Exiting...\n");
+                    curl_global_cleanup();
+                    abort();
+                }
 
-                //add to ht
-                ENTRY hurl, *hret;
-                hurl.key = url;
-                hurl.data = url;
-                hsearch_r(hurl, ENTER, &hret, visited);
+                //printf("url: %s\n", url);
+                res = curl_easy_perform(curl_handle);
+
+                if (res != CURLE_OK)
+                {
+                    if (strcmp(logfile, ""))
+                    {
+                        //write to logfile;
+                        sem_wait(&log_sem);
+                        FILE *log;
+                        log = fopen(logfile, "a");
+                        fputs(url, log);
+                        fputs("\n", log);
+                        fclose(log);
+                        sem_post(&log_sem);
+                    }
+                    //add to ht
+                    ENTRY hurl, *hret;
+                    hurl.key = url;
+                    hurl.data = url;
+                    sem_wait(&ht_sem);
+                    hsearch_r(hurl, ENTER, &hret, visited);
+                    sem_post(&ht_sem);
+                }
+                else
+                {
+                    //printf("checking: %s\n", url);
+                    check_link(url, curl_handle, &recv_buf);
+                }
             }
+            //free(url);
+            sem_wait(&running_sem);
+            anyone_running -= 1;
+            sem_post(&running_sem);
         }
-        else{
-        printf("checking: %s\n", url);
-        check_link(url, curl_handle, &recv_buf); 
+        else
+        {
+            sem_post(&dq_sem);
+            sem_post(&eq_sem);
         }
-        cleanup(curl_handle, &recv_buf);
+        sem_wait(&running_sem);
+        sem_wait(&eq_sem);
+        sem_wait(&dq_sem);
+        sem_wait(&count_sem);
     }
     // exit conditions:
     // All threads are done and frontier empty
@@ -233,13 +316,15 @@ void *crawler(void *ignore)
     // repeat
 
     // on exit, cleanup
-
+    cleanup(curl_handle, &recv_buf);
     pthread_exit(0);
 }
 
-
 int main(int argc, char **argv)
 {
+    struct timeval begin, end;
+    gettimeofday(&begin, NULL);
+
     int c;
     int num_threads = 1;
     /* Maybe replace this with a call to main_getopt.c */
@@ -275,64 +360,77 @@ int main(int argc, char **argv)
     strcpy(seedurl, argv[argc - 1]);
 
     //frontier for pages to visit
-    frontier = malloc(sizeof(int) * 4 + sizeof(char) * 100 * 256);
-
-
+    frontier = malloc(sizeof(int) * 3 + sizeof(char) * 100 * 256);
+    frontier->front = 0;
+    frontier->rear = 0;
+    frontier->count = 0;
 
     //htable for urls_visited
     visited = calloc(1, sizeof(visited));
     hcreate_r(VISITED_HT_SIZE, visited);
 
-    // ENTRY hurl, *hret;
-    // char link[100] = "link1";
-    // hurl.key = link;
-    // hurl.data = link;
-
-    // hsearch_r(hurl, ENTER, &hret, png_list);
-
-    // hurl.key = "link2";
-    // hurl.data = "link2";
-    // hsearch_r(hurl, ENTER, &hret, png_list);
-
-    // hurl.key = "link1";
-
-    // printf("current data = %s\n", (char *)hret->data);
-    // hsearch_r(hurl, FIND, &hret, png_list);
-    // printf("new data = %s\n", (char *)hret->data);
-    // printf("CHECKPOINT\n");
-
-    // printf("num threads = %d\n", num_threads);
-    // printf("num pngs = %d\n", num_pngs);
-    // printf("logfile = %s\n", logfile);
-    // printf("seed = %s\n", seedurl);
+    //initialize sems
+    sem_init(&eq_sem, 1, 0);
+    sem_init(&dq_sem, 1, 0);
+    sem_init(&count_sem, 1, 0);
+    sem_init(&ht_sem, 1, 1);
+    sem_init(&log_sem, 1, 1);
+    sem_init(&png_sem, 1, 1);
+    sem_init(&running_sem, 1, 0);
 
     enqueue(frontier, seedurl);
-    
+
+    //clean up files for use
+    if (strcmp(logfile, ""))
+    {
+        FILE *file;
+        file = fopen(logfile, "wb");
+        fclose(file);
+    }
+    FILE *file;
+    file = fopen("png_urls.txt", "wb");
+    fclose(file);
+
     //create threads
 
     pthread_t crawlers[num_threads];
     for (int i = 0; i < num_threads; i++)
     {
         pthread_create(&crawlers[i], NULL, crawler, NULL);
-        printf("created thread %d\n", i);
+        //printf("created thread %d\n", i);
     }
 
     for (int i = 0; i < num_threads; i++)
-    {   
+    {
         pthread_join(crawlers[i], NULL);
-        printf("joined thread %d\n", i);
+        //printf("joined thread %d\n", i);
     }
 
     // printf("yes\n");
     // for(int i = 0; i < frontier->rear; i++){
-    //     char* printurl = dequeue(frontier); 
+    //     char* printurl = dequeue(frontier);
     //     printf("%s\n", printurl);
     //     free(printurl);
     // }
 
-    //char* printurl = dequeue(frontier); 
+    gettimeofday(&end, NULL);
+    double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec) / 1000000.0);
+    printf("paster2 execution time: %6lf seconds\n", elapsed);
+
+    //char* printurl = dequeue(frontier);
     //printf("link = %s\n", printurl);
 
+    //cleanup
+    sem_destroy(&eq_sem);
+    sem_destroy(&dq_sem);
+    sem_destroy(&count_sem);
+    sem_destroy(&ht_sem);
+    sem_destroy(&log_sem);
+    sem_destroy(&png_sem);
+    sem_destroy(&running_sem);
+
+    //curl_global_cleanup();
     free(frontier);
+    hdestroy_r(visited);
     return 0;
 }

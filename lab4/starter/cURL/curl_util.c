@@ -191,44 +191,44 @@ void cleanup(CURL *curl, RECV_BUF *ptr)
     recv_buf_cleanup(ptr);
 }
 
-int find_http(char *buf, int size, int follow_relative_links, const char *base_url)
+htmlDocPtr mem_getdoc(char *buf, int size, const char *url)
+{
+    int opts = HTML_PARSE_NOBLANKS | HTML_PARSE_NOERROR |
+               HTML_PARSE_NOWARNING | HTML_PARSE_NONET;
+    htmlDocPtr doc = htmlReadMemory(buf, size, url, NULL, opts);
+
+    if (doc == NULL)
+    {
+        //fprintf(stderr, "Document not parsed successfully.\n");
+        return NULL;
+    }
+    return doc;
+}
+
+xmlXPathObjectPtr getnodeset(xmlDocPtr doc, xmlChar *xpath)
 {
 
-    int i;
-    htmlDocPtr doc;
-    xmlChar *xpath = (xmlChar *)"//a/@href";
-    xmlNodeSetPtr nodeset;
+    xmlXPathContextPtr context;
     xmlXPathObjectPtr result;
-    xmlChar *href;
 
-    if (buf == NULL)
+    context = xmlXPathNewContext(doc);
+    if (context == NULL)
     {
-        return 1;
+        printf("Error in xmlXPathNewContext\n");
+        return NULL;
     }
-
-    doc = mem_getdoc(buf, size, base_url);
-    result = getnodeset(doc, xpath);
-    if (result)
+    result = xmlXPathEvalExpression(xpath, context);
+    xmlXPathFreeContext(context);
+    if (result == NULL)
     {
-        nodeset = result->nodesetval;
-        for (i = 0; i < nodeset->nodeNr; i++)
-        {
-            href = xmlNodeListGetString(doc, nodeset->nodeTab[i]->xmlChildrenNode, 1);
-            if (follow_relative_links)
-            {
-                xmlChar *old = href;
-                href = xmlBuildURI(href, (xmlChar *)base_url);
-                xmlFree(old);
-            }
-            if (href != NULL && !strncmp((const char *)href, "http", 4))
-            {
-                printf("href: %s\n", href);
-            }
-            xmlFree(href);
-        }
+        printf("Error in xmlXPathEvalExpression\n");
+        return NULL;
+    }
+    if (xmlXPathNodeSetIsEmpty(result->nodesetval))
+    {
         xmlXPathFreeObject(result);
+        //printf("No result\n");
+        return NULL;
     }
-    xmlFreeDoc(doc);
-    xmlCleanupParser();
-    return 0;
+    return result;
 }

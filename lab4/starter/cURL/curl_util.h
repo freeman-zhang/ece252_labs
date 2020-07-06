@@ -10,6 +10,7 @@
 #include <libxml/uri.h>
 
 #pragma once
+#define _GNU_SOURCE
 
 typedef struct recv_buf
 {
@@ -20,11 +21,24 @@ typedef struct recv_buf
                      /* <0 indicates an invalid seq number */
 } RECV_BUF;
 
-size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
+typedef struct char_queue
+{
+    int front;
+    int rear;
+    int count;
+    int max;
+    char *urls[100];
+} * char_queue_p;
+
+struct hsearch_data;
+
+size_t
+header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl3(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
 int write_file(const char *path, const void *in, size_t len);
 CURL *easy_handle_init(RECV_BUF *ptr, const char *url);
 void cleanup(CURL *curl, RECV_BUF *ptr);
-int find_http(char *buf, int size, int follow_relative_links, const char *base_url);
+htmlDocPtr mem_getdoc(char *buf, int size, const char *url);
+xmlXPathObjectPtr getnodeset(xmlDocPtr doc, xmlChar *xpath);

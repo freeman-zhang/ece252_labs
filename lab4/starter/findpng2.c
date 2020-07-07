@@ -27,7 +27,9 @@ typedef struct char_queue
 //global vars
 char_queue_p frontier;
 struct hsearch_data *visited;
+char *visited_array[400];
 int png_count = 0;
+int link_count = 0;
 int num_pngs = 50;
 char logfile[100] = "";
 int anyone_running = 0;
@@ -58,6 +60,7 @@ char *dequeue(char_queue_p queue)
     if (!empty(queue))
     {
         memcpy(&returl, &queue->urls[queue->front], sizeof(queue->urls[queue->front]));
+        //returl = strdup(queue->urls[queue->front]);
         //free(queue->urls[queue->front]);
         queue->front++;
         queue->count--;
@@ -66,6 +69,7 @@ char *dequeue(char_queue_p queue)
     {
         return NULL;
     }
+    //free(queue->urls[queue->front]);
     return returl;
 }
 
@@ -82,6 +86,8 @@ int enqueue(char_queue_p queue, char *url)
     }
 
     memcpy(&queue->urls[queue->rear], &url, sizeof(url));
+    //queue->urls[queue->rear] = strdup(url);
+    //free(url);
     //strcpy(queue->urls[queue->rear], url);
     queue->count++;
     return 0;
@@ -107,6 +113,7 @@ int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
     {
         sem_wait(&ht_sem);
         hsearch_r(hurl, ENTER, &hret, visited);
+        visited_array[link_count++] = url;
         sem_post(&ht_sem);
 
         find_http(p_recv_buf->buf, p_recv_buf->size, 1, url, curl_handle);
@@ -129,6 +136,7 @@ int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
         //add to ht
         sem_wait(&ht_sem);
         hsearch_r(hurl, ENTER, &hret, visited);
+        visited_array[link_count++] = url;
         sem_post(&ht_sem);
 
         //write to png_urls.txt;
@@ -198,24 +206,25 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
             {
                 //printf("href: %s\n", href);
                 //handling logic for what to do with link found
-                char *url = (char *)href;
+                char *newUrl = strdup((char *)href);
                 ENTRY hurl, *hret;
-                hurl.key = url;
-                hurl.data = url;
+                hurl.key = newUrl;
+                hurl.data = newUrl;
                 // check if url is in ht
                 sem_wait(&ht_sem);
                 if (!hsearch_r(hurl, FIND, &hret, visited))
                 {
                     //add to ht
                     sem_wait(&eq_sem);
-                    enqueue(frontier, url);
+                    enqueue(frontier, newUrl);
                     sem_post(&eq_sem);
                     hsearch_r(hurl, ENTER, &hret, visited);
+                    visited_array[link_count++] = newUrl;
                     //check_link(url, curl_handle);
                 }
                 sem_post(&ht_sem);
             }
-            //xmlFree(href);
+            xmlFree(href);
         }
         xmlXPathFreeObject(result);
     }
@@ -226,6 +235,8 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
 
 void *crawler(void *ignore)
 {
+    char *url = malloc(sizeof(char) * 100);
+    int *retVal = 0;
     CURL *curl_handle;
     CURLcode res;
     RECV_BUF recv_buf;
@@ -237,7 +248,7 @@ void *crawler(void *ignore)
         sem_post(&running_sem);
         if (!empty(frontier))
         {
-            char *url = malloc(sizeof(char) * 100);
+
             url = dequeue(frontier);
             sem_post(&dq_sem);
             sem_post(&eq_sem);
@@ -286,6 +297,7 @@ void *crawler(void *ignore)
                     hurl.data = url;
                     sem_wait(&ht_sem);
                     hsearch_r(hurl, ENTER, &hret, visited);
+                    visited_array[link_count++] = url;
                     sem_post(&ht_sem);
                 }
                 else
@@ -317,7 +329,7 @@ void *crawler(void *ignore)
 
     // on exit, cleanup
     cleanup(curl_handle, &recv_buf);
-    pthread_exit(0);
+    pthread_exit(retVal);
 }
 
 int main(int argc, char **argv)

@@ -235,7 +235,7 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
 
 void *crawler(void *ignore)
 {
-    char *url = malloc(sizeof(char) * 100);
+
     int *retVal = 0;
     CURL *curl_handle;
     CURLcode res;
@@ -244,6 +244,7 @@ void *crawler(void *ignore)
 
     while ((!empty(frontier) || anyone_running) && png_count < num_pngs)
     {
+        char *url = malloc(sizeof(char) * 100);
         sem_post(&count_sem);
         sem_post(&running_sem);
         if (!empty(frontier))

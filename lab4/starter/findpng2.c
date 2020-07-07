@@ -7,12 +7,12 @@
 #include <search.h>           /* for hcreate */
 #include "png_util/lab_png.h" /* simple PNG data structures   */
 #include "cURL/curl_util.h"   /* for header and write cb      */
-#include <semaphore.h>
+//#include <semaphore.h>
 #include <time.h>
 
 #define CT_PNG "image/png"
 #define CT_HTML "text/html"
-#define VISITED_HT_SIZE 100
+//#define VISITED_HT_SIZE 100
 
 #define _GNU_SOURCE
 
@@ -26,7 +26,7 @@ typedef struct char_queue
 
 //global vars
 char_queue_p frontier;
-struct hsearch_data *visited;
+//struct hsearch_data *visited;
 char *visited_array[400];
 int png_count = 0;
 int link_count = 0;
@@ -45,9 +45,9 @@ sem_t running_sem;
 //function declarations
 int find_http(char *buf, int size, int follow_relative_links, const char *base_url, CURL *curl_handle);
 int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf);
-int hcreate_r(size_t nel, struct hsearch_data *htab);
-int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab);
-void hdestroy_r(struct hsearch_data *htab);
+// int hcreate_r(size_t nel, struct hsearch_data *htab);
+// int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab);
+// void hdestroy_r(struct hsearch_data *htab);
 
 int empty(char_queue_p queue)
 {
@@ -106,13 +106,13 @@ int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
 
     //printf("link: %s, type: %s\n", url, ct);
-    ENTRY hurl, *hret;
+    ENTRY hurl;
     hurl.key = url;
-    hurl.data = url;
+    //hurl.data = url;
     if (strstr(ct, CT_HTML))
     {
         sem_wait(&ht_sem);
-        hsearch_r(hurl, ENTER, &hret, visited);
+        hsearch(hurl, ENTER);
         visited_array[link_count++] = url;
         sem_post(&ht_sem);
 
@@ -135,7 +135,7 @@ int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
         //printf("png yes \n");
         //add to ht
         sem_wait(&ht_sem);
-        hsearch_r(hurl, ENTER, &hret, visited);
+        hsearch(hurl, ENTER);
         visited_array[link_count++] = url;
         sem_post(&ht_sem);
 
@@ -207,18 +207,18 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                 //printf("href: %s\n", href);
                 //handling logic for what to do with link found
                 char *newUrl = strdup((char *)href);
-                ENTRY hurl, *hret;
+                ENTRY hurl;
                 hurl.key = newUrl;
-                hurl.data = newUrl;
+                //hurl.data = newUrl;
                 // check if url is in ht
                 sem_wait(&ht_sem);
-                if (!hsearch_r(hurl, FIND, &hret, visited))
+                if (!hsearch(hurl, FIND))
                 {
                     //add to ht
                     sem_wait(&eq_sem);
                     enqueue(frontier, newUrl);
                     sem_post(&eq_sem);
-                    hsearch_r(hurl, ENTER, &hret, visited);
+                    hsearch(hurl, ENTER);
                     visited_array[link_count++] = newUrl;
                     //check_link(url, curl_handle);
                 }
@@ -244,7 +244,7 @@ void *crawler(void *ignore)
 
     while ((!empty(frontier) || anyone_running) && png_count < num_pngs)
     {
-        char *url = malloc(sizeof(char) * 100);
+        char *url;
         sem_post(&count_sem);
         sem_post(&running_sem);
         if (!empty(frontier))
@@ -293,11 +293,11 @@ void *crawler(void *ignore)
                         sem_post(&log_sem);
                     }
                     //add to ht
-                    ENTRY hurl, *hret;
+                    ENTRY hurl;
                     hurl.key = url;
-                    hurl.data = url;
+                    //hurl.data = url;
                     sem_wait(&ht_sem);
-                    hsearch_r(hurl, ENTER, &hret, visited);
+                    hsearch(hurl, ENTER);
                     visited_array[link_count++] = url;
                     sem_post(&ht_sem);
                 }
@@ -379,8 +379,8 @@ int main(int argc, char **argv)
     frontier->count = 0;
 
     //htable for urls_visited
-    visited = calloc(1, sizeof(visited));
-    hcreate_r(VISITED_HT_SIZE, visited);
+    //visited = calloc(1, sizeof(visited));
+    hcreate(1000);
 
     //initialize sems
     sem_init(&eq_sem, 1, 0);
@@ -444,6 +444,6 @@ int main(int argc, char **argv)
 
     //curl_global_cleanup();
     free(frontier);
-    hdestroy_r(visited);
+    hdestroy();
     return 0;
 }

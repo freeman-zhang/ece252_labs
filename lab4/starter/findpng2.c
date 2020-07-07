@@ -21,7 +21,7 @@ typedef struct char_queue
     int front;
     int rear;
     int count;
-    char *urls[100];
+    char *urls[400];
 } * char_queue_p;
 
 //global vars
@@ -33,18 +33,19 @@ int link_count = 0;
 int num_pngs = 50;
 char logfile[100] = "";
 int anyone_running = 0;
+struct timespec wait_time = {0};
 //semaphores
-sem_t eq_sem;
-sem_t dq_sem;
-sem_t count_sem;
-sem_t ht_sem;
-sem_t log_sem;
-sem_t png_sem;
-sem_t running_sem;
+pthread_mutex_t q_mutex;
+pthread_mutex_t count_mutex;
+pthread_mutex_t ht_mutex;
+pthread_mutex_t log_mutex;
+pthread_mutex_t png_mutex;
+pthread_mutex_t running_mutex;
+pthread_mutex_t link_mutex;
 
 //function declarations
 int find_http(char *buf, int size, int follow_relative_links, const char *base_url, CURL *curl_handle);
-int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf);
+int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf);
 // int hcreate_r(size_t nel, struct hsearch_data *htab);
 // int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab);
 // void hdestroy_r(struct hsearch_data *htab);
@@ -56,10 +57,11 @@ int empty(char_queue_p queue)
 
 char *dequeue(char_queue_p queue)
 {
-    char *returl;
+    char *returl; 
     if (!empty(queue))
     {
-        memcpy(&returl, &queue->urls[queue->front], sizeof(queue->urls[queue->front]));
+        returl = malloc(strlen(queue->urls[queue->front]) + 1);
+        strcpy(returl, queue->urls[queue->front]);
         //returl = strdup(queue->urls[queue->front]);
         //free(queue->urls[queue->front]);
         queue->front++;
@@ -84,8 +86,8 @@ int enqueue(char_queue_p queue, char *url)
     {
         queue->rear = queue->rear + 1;
     }
-
-    memcpy(&queue->urls[queue->rear], &url, sizeof(url));
+    queue->urls[queue->rear] = malloc(strlen(url) + 1);
+    strcpy(queue->urls[queue->rear], url);
     //queue->urls[queue->rear] = strdup(url);
     //free(url);
     //strcpy(queue->urls[queue->rear], url);
@@ -93,7 +95,7 @@ int enqueue(char_queue_p queue, char *url)
     return 0;
 }
 
-int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
+int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
 {
     CURLcode res;
     char *ct = NULL;
@@ -104,72 +106,54 @@ int check_link(char *url, CURL *curl_handle, RECV_BUF *p_recv_buf)
         fprintf(stderr, "Failed obtain Content-Type\n");
         return 2;
     }
-
+    char *checkurl = NULL;
+    curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
+    //printf("check: %s\n", url);
+    if (strcmp(logfile, ""))
+    {
+        //write to logfile;
+        pthread_mutex_lock(&log_mutex);
+        FILE *log;
+        log = fopen(logfile, "a");
+        fputs(checkurl, log);
+        fputs("\n", log);
+        fclose(log);
+        pthread_mutex_unlock(&log_mutex);
+    }
+    
     //printf("link: %s, type: %s\n", url, ct);
-    ENTRY hurl;
-    hurl.key = url;
-    //hurl.data = url;
+
     if (strstr(ct, CT_HTML))
     {
-        sem_wait(&ht_sem);
-        hsearch(hurl, ENTER);
-        visited_array[link_count++] = url;
-        sem_post(&ht_sem);
-
-        find_http(p_recv_buf->buf, p_recv_buf->size, 1, url, curl_handle);
-
-        if (strcmp(logfile, ""))
-        {
-            //write to logfile;
-            sem_wait(&log_sem);
-            FILE *log;
-            log = fopen(logfile, "a");
-            fputs(url, log);
-            fputs("\n", log);
-            fclose(log);
-            sem_post(&log_sem);
-        }
+        find_http(p_recv_buf->buf, p_recv_buf->size, 1, checkurl, curl_handle);
     }
     else if (strstr(ct, CT_PNG))
     {
-        //printf("png yes \n");
-        //add to ht
-        sem_wait(&ht_sem);
-        hsearch(hurl, ENTER);
-        visited_array[link_count++] = url;
-        sem_post(&ht_sem);
-
-        //write to png_urls.txt;
-        sem_wait(&png_sem);
-        sem_wait(&count_sem);
-        if (png_count < num_pngs)
-        {
-            png_count++;
-            sem_post(&count_sem);
-            FILE *png_file;
-            png_file = fopen("png_urls.txt", "a");
-            fputs(url, png_file);
-            fputs("\n", png_file);
-            fclose(png_file);
-        }
-        else
-        {
-            sem_post(&count_sem);
-        }
-        sem_post(&png_sem);
-
-        if (strcmp(logfile, ""))
-        {
-            //write to logfile;
-            sem_wait(&log_sem);
-            FILE *log;
-            log = fopen(logfile, "a");
-            fputs(url, log);
-            fputs("\n", log);
-            fclose(log);
-            sem_post(&log_sem);
+        U8 * header;
+        memcpy(&header, p_recv_buf, sizeof(header));
+        if(is_png(header)){
+            //printf("png yes \n");
+            //write to png_urls.txt;
+            pthread_mutex_lock(&png_mutex);
+            pthread_mutex_lock(&count_mutex);
+            if (png_count < num_pngs)
+            {
+                png_count++;
+                pthread_mutex_unlock(&count_mutex);
+                FILE *png_file;
+                png_file = fopen("png_urls.txt", "a");
+                fputs(checkurl, png_file);
+                fputs("\n", png_file);
+                fclose(png_file);
+            }
+            else
+            {
+                pthread_mutex_unlock(&count_mutex);
+            }
+            pthread_mutex_unlock(&png_mutex);
         }
     }
+    //printf("done check\n");
     return 0;
 }
 
@@ -206,23 +190,9 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
             {
                 //printf("href: %s\n", href);
                 //handling logic for what to do with link found
-                char *newUrl = strdup((char *)href);
-                ENTRY hurl;
-                hurl.key = newUrl;
-                //hurl.data = newUrl;
-                // check if url is in ht
-                sem_wait(&ht_sem);
-                if (!hsearch(hurl, FIND))
-                {
-                    //add to ht
-                    sem_wait(&eq_sem);
-                    enqueue(frontier, newUrl);
-                    sem_post(&eq_sem);
-                    hsearch(hurl, ENTER);
-                    visited_array[link_count++] = newUrl;
-                    //check_link(url, curl_handle);
-                }
-                sem_post(&ht_sem);
+                pthread_mutex_lock(&q_mutex);
+                enqueue(frontier, (char *)href);
+                pthread_mutex_unlock(&q_mutex);
             }
             xmlFree(href);
         }
@@ -230,6 +200,7 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
     }
     xmlFreeDoc(doc);
     xmlCleanupParser();
+    //printf("find done\n");
     return 0;
 }
 
@@ -240,34 +211,47 @@ void *crawler(void *ignore)
     CURL *curl_handle;
     CURLcode res;
     RECV_BUF recv_buf;
+    ENTRY hurl;
+    char *url;
     curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    pthread_mutex_lock(&count_mutex);
+    pthread_mutex_lock(&running_mutex);
+    pthread_mutex_lock(&q_mutex);
 
     while ((!empty(frontier) || anyone_running) && png_count < num_pngs)
     {
-        char *url;
-        sem_post(&count_sem);
-        sem_post(&running_sem);
-        if (!empty(frontier))
+        pthread_mutex_unlock(&q_mutex);
+        pthread_mutex_unlock(&count_mutex);
+        pthread_mutex_unlock(&running_mutex);
+
+        pthread_mutex_lock(&q_mutex);
+        url = dequeue(frontier);
+        pthread_mutex_unlock(&q_mutex);
+
+        //if url is not NULL
+        if (url)
         {
-
-            url = dequeue(frontier);
-            sem_post(&dq_sem);
-            sem_post(&eq_sem);
-
-            sem_wait(&running_sem);
-            anyone_running += 1;
-            sem_post(&running_sem);
-
-            // dq a url from frontier
-            //printf("%d\n", empty(frontier));
-
-            printf("");
-            //printf("checking %s\n", url);
-            // curl call to url
-
-            //if url is not NULL
-            if (url)
+            //printf("url: %s\n", url);
+            hurl.key = url;
+            //hurl.data = newUrl;
+            // check if url is in ht
+            pthread_mutex_lock(&ht_mutex);
+            if (hsearch(hurl, FIND) == NULL)
             {
+                //add to ht
+                hsearch(hurl, ENTER);
+                pthread_mutex_unlock(&ht_mutex);
+                visited_array[link_count++] = url;
+                //check_link(url, curl_handle);
+
+                pthread_mutex_lock(&running_mutex);
+                anyone_running += 1;
+                pthread_mutex_unlock(&running_mutex);
+                //printf("");
+                //printf("checking %s\n", url);
+                // curl call to url
+
                 curl_handle = easy_handle_init(&recv_buf, url);
                 if (curl_handle == NULL)
                 {
@@ -284,44 +268,42 @@ void *crawler(void *ignore)
                     if (strcmp(logfile, ""))
                     {
                         //write to logfile;
-                        sem_wait(&log_sem);
+                        pthread_mutex_lock(&log_mutex);
                         FILE *log;
                         log = fopen(logfile, "a");
                         fputs(url, log);
                         fputs("\n", log);
                         fclose(log);
-                        sem_post(&log_sem);
+                        pthread_mutex_unlock(&log_mutex);
                     }
-                    //add to ht
-                    ENTRY hurl;
-                    hurl.key = url;
-                    //hurl.data = url;
-                    sem_wait(&ht_sem);
-                    hsearch(hurl, ENTER);
-                    visited_array[link_count++] = url;
-                    sem_post(&ht_sem);
                 }
                 else
                 {
                     //printf("checking: %s\n", url);
-                    check_link(url, curl_handle, &recv_buf);
+                    check_link(curl_handle, &recv_buf);
                 }
+                //free(url);
+                pthread_mutex_lock(&running_mutex);
+                anyone_running -= 1;
+                pthread_mutex_unlock(&running_mutex);
             }
-            //free(url);
-            sem_wait(&running_sem);
-            anyone_running -= 1;
-            sem_post(&running_sem);
+            else{
+                pthread_mutex_unlock(&ht_mutex);
+            }
+            //printf("empty: %d\n", empty(frontier));
         }
-        else
-        {
-            sem_post(&dq_sem);
-            sem_post(&eq_sem);
+        else{
+            //wait before checking the queue again
+            nanosleep(&wait_time, NULL);
         }
-        sem_wait(&running_sem);
-        sem_wait(&eq_sem);
-        sem_wait(&dq_sem);
-        sem_wait(&count_sem);
+        pthread_mutex_lock(&running_mutex);
+        pthread_mutex_lock(&count_mutex);
+        pthread_mutex_lock(&q_mutex);
     }
+    pthread_mutex_unlock(&count_mutex);
+    pthread_mutex_unlock(&running_mutex);
+    pthread_mutex_unlock(&q_mutex);
+
     // exit conditions:
     // All threads are done and frontier empty
     // pngs full
@@ -369,11 +351,10 @@ int main(int argc, char **argv)
         }
     }
     //seedurl by taking last arg
-    char seedurl[256];
-    strcpy(seedurl, argv[argc - 1]);
+    char *seedurl = argv[argc - 1];
 
     //frontier for pages to visit
-    frontier = malloc(sizeof(int) * 3 + sizeof(char) * 100 * 256);
+    frontier = malloc(sizeof(frontier->urls)+sizeof(int)*3);
     frontier->front = 0;
     frontier->rear = 0;
     frontier->count = 0;
@@ -382,14 +363,16 @@ int main(int argc, char **argv)
     //visited = calloc(1, sizeof(visited));
     hcreate(1000);
 
-    //initialize sems
-    sem_init(&eq_sem, 1, 0);
-    sem_init(&dq_sem, 1, 0);
-    sem_init(&count_sem, 1, 0);
-    sem_init(&ht_sem, 1, 1);
-    sem_init(&log_sem, 1, 1);
-    sem_init(&png_sem, 1, 1);
-    sem_init(&running_sem, 1, 0);
+    wait_time.tv_sec = 0;
+    wait_time.tv_nsec = 1000;
+    //initialize mutex
+    pthread_mutex_init(&q_mutex, NULL);
+    pthread_mutex_init(&count_mutex, NULL);
+    pthread_mutex_init(&ht_mutex, NULL);
+    pthread_mutex_init(&log_mutex, NULL);
+    pthread_mutex_init(&png_mutex, NULL);
+    pthread_mutex_init(&running_mutex, NULL);
+    pthread_mutex_init(&link_mutex, NULL);
 
     enqueue(frontier, seedurl);
 
@@ -434,13 +417,13 @@ int main(int argc, char **argv)
     //printf("link = %s\n", printurl);
 
     //cleanup
-    sem_destroy(&eq_sem);
-    sem_destroy(&dq_sem);
-    sem_destroy(&count_sem);
-    sem_destroy(&ht_sem);
-    sem_destroy(&log_sem);
-    sem_destroy(&png_sem);
-    sem_destroy(&running_sem);
+    pthread_mutex_destroy(&q_mutex);
+    pthread_mutex_destroy(&count_mutex);
+    pthread_mutex_destroy(&ht_mutex);
+    pthread_mutex_destroy(&log_mutex);
+    pthread_mutex_destroy(&png_mutex);
+    pthread_mutex_destroy(&running_mutex);
+    pthread_mutex_destroy(&link_mutex);
 
     //curl_global_cleanup();
     free(frontier);

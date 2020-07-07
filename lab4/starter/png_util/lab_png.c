@@ -46,12 +46,16 @@ U32 getBufferSize(U8 *path)
 int is_png(U8 *buf)
 {
     U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
-    U8 header[8];
+    //U8 header[8];
+    int equal = 1;
     for (int i = 0; i < 8; i++)
     {
-        header[i] = buf[i];
+        if (buf[i] != signature[i])
+        {
+            equal = 0;
+        }
     }
-    return !memcmp(signature, header, sizeof(signature));
+    return equal;
 }
 
 int get_png_width(struct chunk *ihdr)

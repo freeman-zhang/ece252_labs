@@ -190,7 +190,6 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
         xmlXPathFreeObject(result);
     }
     xmlFreeDoc(doc);
-    xmlCleanupParser();
     //printf("find done\n");
     return 0;
 }
@@ -422,6 +421,7 @@ int main(int argc, char **argv)
     for (int i = 0; i <= link_count; i++){
         free(visited_array[i]);
     }
+    xmlCleanupParser();
     hdestroy();
     return 0;
 }

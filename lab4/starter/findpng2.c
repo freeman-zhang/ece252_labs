@@ -57,9 +57,10 @@ int empty(char_queue_p queue)
 
 char *dequeue(char_queue_p queue)
 {
-    char *returl; 
+    char *returl = NULL; 
     if (!empty(queue))
     {
+        //printf("count = %d\n",queue->count);
         returl = malloc(strlen(queue->urls[queue->front]) + 1);
         strcpy(returl, queue->urls[queue->front]);
         //returl = strdup(queue->urls[queue->front]);
@@ -67,22 +68,19 @@ char *dequeue(char_queue_p queue)
         queue->front++;
         queue->count--;
     }
-    else
-    {
-        return NULL;
-    }
     //free(queue->urls[queue->front]);
     return returl;
 }
 
 int enqueue(char_queue_p queue, char *url)
 {
+    //printf("count = %d\n",queue->count);
     queue->urls[queue->rear] = malloc(strlen(url) + 1);
     strcpy(queue->urls[queue->rear], url);
-    queue->rear++;
     //queue->urls[queue->rear] = strdup(url);
     //free(url);
     //strcpy(queue->urls[queue->rear], url);
+    queue->rear++;
     queue->count++;
     return 0;
 }
@@ -126,23 +124,24 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
         if(is_png(header)){
             //printf("png yes \n");
             //write to png_urls.txt;
-            pthread_mutex_lock(&png_mutex);
+            
             pthread_mutex_lock(&count_mutex);
             if (png_count < num_pngs)
             {
                 png_count++;
                 pthread_mutex_unlock(&count_mutex);
+                pthread_mutex_lock(&png_mutex);
                 FILE *png_file;
                 png_file = fopen("png_urls.txt", "a");
                 fputs(checkurl, png_file);
                 fputs("\n", png_file);
                 fclose(png_file);
+                pthread_mutex_unlock(&png_mutex);
             }
             else
             {
                 pthread_mutex_unlock(&count_mutex);
             }
-            pthread_mutex_unlock(&png_mutex);
         }
     }
     //printf("done check\n");
@@ -204,25 +203,30 @@ void *crawler(void *ignore)
     CURLcode res;
     RECV_BUF recv_buf;
     ENTRY hurl;
-    char *url;
+    char *url = NULL;
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     pthread_mutex_lock(&count_mutex);
     pthread_mutex_lock(&running_mutex);
-    pthread_mutex_lock(&q_mutex);
+    //pthread_mutex_lock(&q_mutex);
 
     while ((!empty(frontier) || anyone_running) && png_count < num_pngs)
     {
-        pthread_mutex_unlock(&q_mutex);
+        //pthread_mutex_unlock(&q_mutex);
         pthread_mutex_unlock(&count_mutex);
         pthread_mutex_unlock(&running_mutex);
 
         pthread_mutex_lock(&q_mutex);
         url = dequeue(frontier);
+        //printf("url: %s\n", url);
         pthread_mutex_unlock(&q_mutex);
 
         //if url is not NULL
-        if (url)
+        if (url == NULL){
+            //wait before checking the queue again
+            nanosleep(&wait_time, NULL);
+        }
+        else
         {
             //printf("url: %s\n", url);
             hurl.key = url;
@@ -274,7 +278,7 @@ void *crawler(void *ignore)
                     //printf("checking: %s\n", url);
                     check_link(curl_handle, &recv_buf);
                 }
-                //free(url);
+                free(url);
                 pthread_mutex_lock(&running_mutex);
                 anyone_running -= 1;
                 pthread_mutex_unlock(&running_mutex);
@@ -284,17 +288,13 @@ void *crawler(void *ignore)
             }
             //printf("empty: %d\n", empty(frontier));
         }
-        else{
-            //wait before checking the queue again
-            nanosleep(&wait_time, NULL);
-        }
         pthread_mutex_lock(&running_mutex);
         pthread_mutex_lock(&count_mutex);
-        pthread_mutex_lock(&q_mutex);
+        //pthread_mutex_lock(&q_mutex);
     }
     pthread_mutex_unlock(&count_mutex);
     pthread_mutex_unlock(&running_mutex);
-    pthread_mutex_unlock(&q_mutex);
+    //pthread_mutex_unlock(&q_mutex);
 
     // exit conditions:
     // All threads are done and frontier empty
@@ -356,7 +356,7 @@ int main(int argc, char **argv)
     hcreate(1000);
 
     wait_time.tv_sec = 0;
-    wait_time.tv_nsec = 1000;
+    wait_time.tv_nsec = 5000 * num_threads;
     //initialize mutex
     pthread_mutex_init(&q_mutex, NULL);
     pthread_mutex_init(&count_mutex, NULL);
@@ -418,7 +418,9 @@ int main(int argc, char **argv)
     pthread_mutex_destroy(&link_mutex);
 
     //curl_global_cleanup();
-    free(frontier);
+    for (int i = frontier->front; i <= frontier->rear; i++){
+        free(frontier->urls[i]);
+    }
     hdestroy();
     return 0;
 }

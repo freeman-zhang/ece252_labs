@@ -419,9 +419,8 @@ int main(int argc, char **argv)
 
     //curl_global_cleanup();
 
-    for (int i = 0; i <= frontier->rear; i++){
-        char * freeurl = dequeue(frontier);
-        free(freeurl);
+    for (int i = 0; i <= link_count; i++){
+        free(visited_array[i]);
     }
     hdestroy();
     return 0;

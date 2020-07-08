@@ -27,7 +27,7 @@ typedef struct char_queue
 //global vars
 char_queue_p frontier;
 //struct hsearch_data *visited;
-char *visited_array[400];
+char *visited_array[600];
 int png_count = 0;
 int link_count = 0;
 int num_pngs = 50;
@@ -352,7 +352,7 @@ int main(int argc, char **argv)
 
     //htable for urls_visited
     //visited = calloc(1, sizeof(visited));
-    hcreate(1000);
+    hcreate(2000);
 
     wait_time.tv_sec = 0;
     wait_time.tv_nsec = 5000 * num_threads;
@@ -408,13 +408,13 @@ int main(int argc, char **argv)
     //printf("link = %s\n", printurl);
 
     //cleanup
-    pthread_mutex_destroy(&q_mutex);
-    pthread_mutex_destroy(&count_mutex);
-    pthread_mutex_destroy(&ht_mutex);
-    pthread_mutex_destroy(&log_mutex);
-    pthread_mutex_destroy(&png_mutex);
-    pthread_mutex_destroy(&running_mutex);
-    pthread_mutex_destroy(&link_mutex);
+    //pthread_mutex_destroy(&q_mutex);
+    //pthread_mutex_destroy(&count_mutex);
+    //pthread_mutex_destroy(&ht_mutex);
+    //pthread_mutex_destroy(&log_mutex);
+    //pthread_mutex_destroy(&png_mutex);
+    //pthread_mutex_destroy(&running_mutex);
+    //pthread_mutex_destroy(&link_mutex);
 
     //curl_global_cleanup();
 
@@ -422,6 +422,6 @@ int main(int argc, char **argv)
         free(visited_array[i]);
     }
     xmlCleanupParser();
-    hdestroy();
+   // hdestroy();
     return 0;
 }

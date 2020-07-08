@@ -21,7 +21,7 @@ typedef struct char_queue
     int front;
     int rear;
     int count;
-    char *urls[400];
+    char *urls[1000];
 } * char_queue_p;
 
 //global vars
@@ -77,17 +77,9 @@ char *dequeue(char_queue_p queue)
 
 int enqueue(char_queue_p queue, char *url)
 {
-    if (empty(queue))
-    {
-        queue->front = 0;
-        queue->rear = 0;
-    }
-    else
-    {
-        queue->rear = queue->rear + 1;
-    }
     queue->urls[queue->rear] = malloc(strlen(url) + 1);
     strcpy(queue->urls[queue->rear], url);
+    queue->rear++;
     //queue->urls[queue->rear] = strdup(url);
     //free(url);
     //strcpy(queue->urls[queue->rear], url);

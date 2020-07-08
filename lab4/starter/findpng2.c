@@ -278,7 +278,7 @@ void *crawler(void *ignore)
                     //printf("checking: %s\n", url);
                     check_link(curl_handle, &recv_buf);
                 }
-                free(url);
+                //free(url);
                 pthread_mutex_lock(&running_mutex);
                 anyone_running -= 1;
                 pthread_mutex_unlock(&running_mutex);
@@ -418,8 +418,10 @@ int main(int argc, char **argv)
     pthread_mutex_destroy(&link_mutex);
 
     //curl_global_cleanup();
-    for (int i = frontier->front; i <= frontier->rear; i++){
-        free(frontier->urls[i]);
+
+    for (int i = 0; i <= frontier->rear; i++){
+        char * freeurl = dequeue(frontier);
+        free(freeurl);
     }
     hdestroy();
     return 0;

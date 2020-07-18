@@ -1,23 +1,32 @@
-/* curl_multi_test.c
-
-   Clemens Gruber, 2013
-   <clemens.gruber@pqgruber.com>
-
-   Code description:
-    Requests 4 Web pages via the CURL multi interface
-    and checks if the HTTP status code is 200.
-
-   Update: Fixed! The check for !numfds was the problem.
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #ifndef WIN32
 #include <unistd.h>
 #endif
 #include <curl/multi.h>
+#include <time.h>
+#include <search.h> /* for hcreate */
 
 #define MAX_WAIT_MSECS 30 * 1000 /* Wait max. 30 seconds */
+
+//additional functions
+//check is signature matches png
+int is_png(U8 *buf)
+{
+    U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    //U8 header[8];
+    int equal = 1;
+    for (int i = 0; i < 8; i++)
+    {
+        if (buf[i] != signature[i])
+        {
+            equal = 0;
+        }
+    }
+    return equal;
+}
+
+//data structure for frontier
 
 static const char *urls[] = {
     "http://www.microsoft.com",
@@ -51,7 +60,7 @@ int main(void)
     CURL *eh = NULL;
     CURLMsg *msg = NULL;
     CURLcode return_code = 0;
-    int still_running = 0, i = 0, msgs_left = 0;
+    int still_running = 0, msgs_left = 0;
     int http_status_code;
     const char *szUrl;
 
@@ -59,7 +68,7 @@ int main(void)
 
     cm = curl_multi_init();
 
-    for (i = 0; i < CNT; ++i)
+    for (int i = 0; i < CNT; ++i)
     {
         init(cm, i);
     }
@@ -123,6 +132,7 @@ int main(void)
     } while (still_running);
 
     curl_multi_cleanup(cm);
+    curl_global_cleanup();
 
     return EXIT_SUCCESS;
 }

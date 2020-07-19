@@ -19,4 +19,4 @@ findpng3: findpng3.c $(LIB_UTIL)
 
 .PHONY: clean
 clean:
-	rm -f *~ *.d *.o $(TARGETS) findpng3
+	rm -f *~ *.d *.o $(TARGETS)

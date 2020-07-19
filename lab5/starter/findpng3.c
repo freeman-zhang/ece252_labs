@@ -144,7 +144,7 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    //printf("check: %s\n", url);
+    printf("check: %s\n", checkurl);
     if (strcmp(logfile, ""))
     {
         //write to logfile;
@@ -156,7 +156,8 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
 
     //printf("link: %s, type: %s\n", url, ct);
-
+    //printf("%d\n", *p_recv_buf->buf);
+    printf("%lu\n", p_recv_buf->size);
     if (strstr(ct, CT_HTML))
     {
         find_http(p_recv_buf->buf, p_recv_buf->size, 1, checkurl, curl_handle);
@@ -185,11 +186,6 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     return 0;
 }
 
-static const char *urls[] = {
-    "http://www.microsoft.com",
-    "http://www.yahoo.com",
-    "http://www.wikipedia.org",
-    "http://slashdot.org"};
 #define CNT 4
 
 static size_t cb(char *d, size_t n, size_t l, void *p)
@@ -200,13 +196,13 @@ static size_t cb(char *d, size_t n, size_t l, void *p)
     return n * l;
 }
 
-static void init(CURLM *cm, int i)
+static void init(CURLM *cm, char *url)
 {
     CURL *eh = curl_easy_init();
     curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, cb);
     curl_easy_setopt(eh, CURLOPT_HEADER, 0L);
-    curl_easy_setopt(eh, CURLOPT_URL, urls[i]);
-    curl_easy_setopt(eh, CURLOPT_PRIVATE, urls[i]);
+    curl_easy_setopt(eh, CURLOPT_URL, url);
+    curl_easy_setopt(eh, CURLOPT_PRIVATE, url);
     curl_easy_setopt(eh, CURLOPT_VERBOSE, 0L);
     curl_multi_add_handle(cm, eh);
 }
@@ -247,6 +243,16 @@ int main(int argc, char **argv)
     //seedurl by taking last arg
     char *seedurl = argv[argc - 1];
 
+    //htable
+    hcreate(2000);
+    //allocate memory for frontier
+    frontier = malloc(sizeof(char_queue_p));
+    frontier->front = 0;
+    frontier->rear = 0;
+    frontier->count = 0;
+
+    ENTRY hurl;
+    RECV_BUF recv_buf;
     CURLM *cm = NULL;
     CURL *eh = NULL;
     CURLMsg *msg = NULL;
@@ -259,11 +265,8 @@ int main(int argc, char **argv)
 
     cm = curl_multi_init();
 
-    for (int i = 0; i < CNT; ++i)
-    {
-        init(cm, i);
-    }
-
+    //initialize the curl for seedurl
+    init(cm, seedurl);
     curl_multi_perform(cm, &still_running);
 
     do
@@ -288,42 +291,68 @@ int main(int argc, char **argv)
             if (msg->msg == CURLMSG_DONE)
             {
                 eh = msg->easy_handle;
-
+                //getting recv_buf using eh
+                curl_easy_setopt(eh, CURLOPT_WRITEDATA, (void *)&recv_buf);
                 return_code = msg->data.result;
+
                 if (return_code != CURLE_OK)
                 {
+                    //record to htable and write to log, but ignore for other parts
+
                     fprintf(stderr, "CURL error code: %d\n", msg->data.result);
-                    continue;
+                    //continue;
                 }
-
-                // Get HTTP status code
-                http_status_code = 0;
-                szUrl = NULL;
-
-                curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
-                curl_easy_getinfo(eh, CURLINFO_PRIVATE, &szUrl);
-
-                if (http_status_code == 200)
-                {
-                    printf("200 OK for %s\n", szUrl);
-                }
+                //if webpage doesnt error out
                 else
                 {
-                    fprintf(stderr, "GET of %s returned http status code %d\n", szUrl, http_status_code);
-                }
+                    // Get HTTP status code
+                    http_status_code = 0;
+                    szUrl = NULL;
 
+                    curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
+                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, &szUrl);
+
+                    if (http_status_code > 400)
+                    {
+                        fprintf(stderr, "GET of %s returned http status code %d\n", szUrl, http_status_code);
+                    }
+                    //nothing is wrong, so check site
+                    else
+                    {
+                        printf("checking\n");
+                        check_link(eh, &recv_buf);
+                        //printf("done check\n");
+                    }
+                }
+                //remove curl from multi handle
                 curl_multi_remove_handle(cm, eh);
                 curl_easy_cleanup(eh);
+                //add new curls to multi handle
+                printf("%d\n", empty(frontier));
+                while (still_running < num_connections && !empty(frontier))
+                {
+                    printf("in while\n");
+                    char *newUrl = dequeue(frontier);
+                    //not in ht = not searched yet, so add to multi curl
+                    hurl.key = newUrl;
+                    if (hsearch(hurl, FIND) == NULL)
+                    {
+                        //add to ht
+                        hsearch(hurl, ENTER);
+                        //add new curl with new url
+                        init(cm, newUrl);
+                    }
+                }
             }
             else
             {
                 fprintf(stderr, "error: after curl_multi_info_read(), CURLMsg=%d\n", msg->msg);
             }
         }
-    } while (still_running);
+    } while (still_running && png_count < num_pngs);
 
     curl_multi_cleanup(cm);
     curl_global_cleanup();
-
+    printf("done\n");
     return EXIT_SUCCESS;
 }

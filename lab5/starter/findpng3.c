@@ -27,7 +27,7 @@ typedef struct char_queue
 //functions for queue
 int empty(char_queue_p queue)
 {
-    return queue->count == 0;
+    return queue->front == queue->rear;
 }
 
 char *dequeue(char_queue_p queue)
@@ -39,11 +39,10 @@ char *dequeue(char_queue_p queue)
         returl = malloc(strlen(queue->urls[queue->front]) + 1);
         strcpy(returl, queue->urls[queue->front]);
         //returl = strdup(queue->urls[queue->front]);
-        //free(queue->urls[queue->front]);
+        free(queue->urls[queue->front]);
         queue->front++;
         queue->count--;
     }
-    //free(queue->urls[queue->front]);
     return returl;
 }
 
@@ -146,8 +145,17 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    //printf("check: %s\n", checkurl);
+    printf("check: %s\n", checkurl);
 
+    if (strcmp(logfile, ""))
+    {
+        //write to logfile;
+        FILE *log;
+        log = fopen(logfile, "a");
+        fputs(checkurl, log);
+        fputs("\n", log);
+        fclose(log);
+    }
     //printf("link: %s, type: %s\n", checkurl, ct);
     //printf("%s\n", p_recv_buf->buf);
     //printf("%lu\n", p_recv_buf->size);
@@ -244,7 +252,7 @@ int main(int argc, char **argv)
     //htable
     hcreate(2000);
     //allocate memory for frontier
-    frontier = malloc(sizeof(char_queue_p));
+    frontier = malloc(sizeof(frontier->urls));
     frontier->front = 0;
     frontier->rear = 0;
     frontier->count = 0;
@@ -257,7 +265,8 @@ int main(int argc, char **argv)
     CURL *eh = NULL;
     CURLMsg *msg = NULL;
     CURLcode return_code = 0;
-    int still_running = 0, msgs_left = 0;
+    int still_running = 0;
+    int msgs_left = 0;
     int http_status_code;
     const char *szUrl;
 
@@ -297,10 +306,12 @@ int main(int argc, char **argv)
          }
         */
         //printf("a");
+        
         curl_multi_perform(cm, &still_running);
         while ((msg = curl_multi_info_read(cm, &msgs_left)))
         {
             //printf("in while\n");
+            //printf("msg left = %d\n", msgs_left);
             if (msg->msg == CURLMSG_DONE)
             {
                 eh = msg->easy_handle;
@@ -308,6 +319,7 @@ int main(int argc, char **argv)
                 //curl_easy_perform(eh);
                 //size_t bytes_read = 0;
                 curl_easy_recv(eh, &recv_buf.buf, BUF_SIZE, &recv_buf.size);
+                //printf("%s\n", recv_buf.buf);
                 return_code = msg->data.result;
 
                 if (return_code != CURLE_OK)
@@ -337,38 +349,34 @@ int main(int argc, char **argv)
                 curl_multi_remove_handle(cm, eh);
                 curl_easy_cleanup(eh);
                 concount--;
+                //printf("%d\n", concount);
                 //add new curls to multi handle
-                //printf("%d\n", empty(frontier));
+                //printf("empty = %d\n", empty(frontier));
                 while (concount < num_connections && !empty(frontier))
                 {
                     // /printf("in while\n");
-                    //printf("\ncount = %d\n", frontier->count);
+                    //printf("count = %d\n", frontier->count);
                     char *newUrl = dequeue(frontier);
-                    printf("%s\n", newUrl);
+                    //printf("%s\n", newUrl);
                     //not in ht = not searched yet, so add to multi curl
                     hurl.key = newUrl;
                     if (hsearch(hurl, FIND) == NULL)
                     {
                         //add to ht
                         hsearch(hurl, ENTER);
-                        if (strcmp(logfile, ""))
-                        {
-                            //write to logfile;
-                            FILE *log;
-                            log = fopen(logfile, "a");
-                            fputs(newUrl, log);
-                            fputs("\n", log);
-                            fclose(log);
-                        }
+                        
                         //add new curl with new url
                         init(cm, newUrl, &recv_buf);
                         concount++;
                     }
                     curl_multi_perform(cm, &still_running);
                 }
+                //curl_multi_perform(cm, &still_running);
             }
         }
+        //printf("still running = %d\n", still_running);
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
+
     recv_buf_cleanup(&recv_buf);
     curl_multi_cleanup(cm);
     curl_global_cleanup();

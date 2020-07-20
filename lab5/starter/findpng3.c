@@ -197,7 +197,7 @@ static void init(CURLM *cm, char *url, RECV_BUF *p_recv_buf)
     // curl_easy_setopt(eh, CURLOPT_HEADER, 0L);
     // curl_easy_setopt(eh, CURLOPT_URL, url);
 
-    curl_easy_setopt(eh, CURLOPT_PRIVATE, url);
+    curl_easy_setopt(eh, CURLOPT_PRIVATE, (void *)p_recv_buf);
     curl_easy_setopt(eh, CURLOPT_VERBOSE, 0L);
     curl_multi_add_handle(cm, eh);
 }
@@ -259,7 +259,6 @@ int main(int argc, char **argv)
 
     ENTRY hurl;
     RECV_BUF recv_buf;
-    recv_buf_init(&recv_buf, BUF_SIZE);
     int concount = 0;
     CURLM *cm = NULL;
     CURL *eh = NULL;
@@ -268,7 +267,6 @@ int main(int argc, char **argv)
     int still_running = 0;
     int msgs_left = 0;
     int http_status_code;
-    const char *szUrl;
 
     curl_global_init(CURL_GLOBAL_ALL);
 
@@ -333,16 +331,17 @@ int main(int argc, char **argv)
                 {
                     // Get HTTP status code
                     http_status_code = 0;
-                    szUrl = NULL;
+                    RECV_BUF* ret_buf = NULL;
 
                     curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
-                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, &szUrl);
+                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, ret_buf);
 
                     if (http_status_code < 400)
                     {
                         //printf("checking\n");
-                        check_link(eh, &recv_buf);
+                        check_link(eh, ret_buf);
                         //printf("done check\n");
+                        recv_buf_cleanup(ret_buf);
                     }
                 }
                 //remove curl from multi handle
@@ -366,7 +365,8 @@ int main(int argc, char **argv)
                         hsearch(hurl, ENTER);
                         
                         //add new curl with new url
-                        init(cm, newUrl, &recv_buf);
+                        RECV_BUF new_buf;
+                        init(cm, newUrl, &new_buf);
                         concount++;
                     }
                     curl_multi_perform(cm, &still_running);

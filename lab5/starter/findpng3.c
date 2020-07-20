@@ -252,6 +252,7 @@ int main(int argc, char **argv)
     ENTRY hurl;
     RECV_BUF recv_buf;
     recv_buf_init(&recv_buf, BUF_SIZE);
+    int concount = 0;
     CURLM *cm = NULL;
     CURL *eh = NULL;
     CURLMsg *msg = NULL;
@@ -267,6 +268,7 @@ int main(int argc, char **argv)
     //initialize the curl for seedurl
 
     init(cm, seedurl, &recv_buf);
+    concount++;
     hurl.key = seedurl;
     hsearch(hurl, ENTER);
     if (strcmp(logfile, ""))
@@ -334,9 +336,10 @@ int main(int argc, char **argv)
                 //remove curl from multi handle
                 curl_multi_remove_handle(cm, eh);
                 curl_easy_cleanup(eh);
+                concount--;
                 //add new curls to multi handle
                 //printf("%d\n", empty(frontier));
-                while (still_running < num_connections && !empty(frontier))
+                while (concount < num_connections && !empty(frontier))
                 {
                     // /printf("in while\n");
                     //printf("\ncount = %d\n", frontier->count);
@@ -359,13 +362,14 @@ int main(int argc, char **argv)
                         }
                         //add new curl with new url
                         init(cm, newUrl, &recv_buf);
+                        concount++;
                     }
                     curl_multi_perform(cm, &still_running);
                 }
             }
         }
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
-
+    recv_buf_cleanup(&recv_buf);
     curl_multi_cleanup(cm);
     curl_global_cleanup();
     printf("done\n");

@@ -83,44 +83,45 @@ int main(void)
         */
         curl_multi_perform(cm, &still_running);
 
-        if (msg = curl_multi_info_read(cm, &msgs_left))
+    } while (still_running);
+
+    while ((msg = curl_multi_info_read(cm, &msgs_left)))
+    {
+        if (msg->msg == CURLMSG_DONE)
         {
-            if (msg->msg == CURLMSG_DONE)
+            eh = msg->easy_handle;
+
+            return_code = msg->data.result;
+            if (return_code != CURLE_OK)
             {
-                eh = msg->easy_handle;
+                fprintf(stderr, "CURL error code: %d\n", msg->data.result);
+                continue;
+            }
 
-                return_code = msg->data.result;
-                if (return_code != CURLE_OK)
-                {
-                    fprintf(stderr, "CURL error code: %d\n", msg->data.result);
-                    continue;
-                }
+            // Get HTTP status code
+            http_status_code = 0;
+            szUrl = NULL;
 
-                // Get HTTP status code
-                http_status_code = 0;
-                szUrl = NULL;
+            curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
+            curl_easy_getinfo(eh, CURLINFO_PRIVATE, &szUrl);
 
-                curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
-                curl_easy_getinfo(eh, CURLINFO_PRIVATE, &szUrl);
-
-                if (http_status_code == 200)
-                {
-                    printf("200 OK for %s\n", szUrl);
-                }
-                else
-                {
-                    fprintf(stderr, "GET of %s returned http status code %d\n", szUrl, http_status_code);
-                }
-
-                curl_multi_remove_handle(cm, eh);
-                curl_easy_cleanup(eh);
+            if (http_status_code == 200)
+            {
+                printf("200 OK for %s\n", szUrl);
             }
             else
             {
-                fprintf(stderr, "error: after curl_multi_info_read(), CURLMsg=%d\n", msg->msg);
+                fprintf(stderr, "GET of %s returned http status code %d\n", szUrl, http_status_code);
             }
+
+            curl_multi_remove_handle(cm, eh);
+            curl_easy_cleanup(eh);
         }
-    } while (still_running);
+        else
+        {
+            fprintf(stderr, "error: after curl_multi_info_read(), CURLMsg=%d\n", msg->msg);
+        }
+    }
 
     curl_multi_cleanup(cm);
 

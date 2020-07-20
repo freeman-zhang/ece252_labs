@@ -128,6 +128,7 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
         xmlXPathFreeObject(result);
     }
     xmlFreeDoc(doc);
+    xmlCleanupParser();
     //printf("find done\n");
     return 0;
 }
@@ -145,18 +146,9 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    printf("check: %s\n", checkurl);
-    if (strcmp(logfile, ""))
-    {
-        //write to logfile;
-        FILE *log;
-        log = fopen(logfile, "a");
-        fputs(checkurl, log);
-        fputs("\n", log);
-        fclose(log);
-    }
+    //printf("check: %s\n", checkurl);
 
-    //printf("link: %s, type: %s\n", url, ct);
+    //printf("link: %s, type: %s\n", checkurl, ct);
     //printf("%s\n", p_recv_buf->buf);
     //printf("%lu\n", p_recv_buf->size);
     if (strstr(ct, CT_HTML))
@@ -277,6 +269,15 @@ int main(int argc, char **argv)
     init(cm, seedurl, &recv_buf);
     hurl.key = seedurl;
     hsearch(hurl, ENTER);
+    if (strcmp(logfile, ""))
+    {
+        //write to logfile;
+        FILE *log;
+        log = fopen(logfile, "a");
+        fputs(seedurl, log);
+        fputs("\n", log);
+        fclose(log);
+    }
 
     do
     {
@@ -293,6 +294,7 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
          }
         */
+        //printf("a");
         curl_multi_perform(cm, &still_running);
         while ((msg = curl_multi_info_read(cm, &msgs_left)))
         {
@@ -308,7 +310,6 @@ int main(int argc, char **argv)
 
                 if (return_code != CURLE_OK)
                 {
-                    //record to htable and write to log, but ignore for other parts
 
                     //fprintf(stderr, "CURL error code: %d\n", msg->data.result);
                     //continue;
@@ -338,18 +339,29 @@ int main(int argc, char **argv)
                 while (still_running < num_connections && !empty(frontier))
                 {
                     // /printf("in while\n");
+                    //printf("\ncount = %d\n", frontier->count);
                     char *newUrl = dequeue(frontier);
+                    printf("%s\n", newUrl);
                     //not in ht = not searched yet, so add to multi curl
                     hurl.key = newUrl;
                     if (hsearch(hurl, FIND) == NULL)
                     {
                         //add to ht
                         hsearch(hurl, ENTER);
+                        if (strcmp(logfile, ""))
+                        {
+                            //write to logfile;
+                            FILE *log;
+                            log = fopen(logfile, "a");
+                            fputs(newUrl, log);
+                            fputs("\n", log);
+                            fclose(log);
+                        }
                         //add new curl with new url
                         init(cm, newUrl, &recv_buf);
                     }
+                    curl_multi_perform(cm, &still_running);
                 }
-                curl_multi_perform(cm, &still_running);
             }
         }
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);

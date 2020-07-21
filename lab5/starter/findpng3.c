@@ -39,7 +39,7 @@ char *dequeue(char_queue_p queue)
         returl = malloc(strlen(queue->urls[queue->front]) + 1);
         strcpy(returl, queue->urls[queue->front]);
         //returl = strdup(queue->urls[queue->front]);
-        free(queue->urls[queue->front]);
+        //free(queue->urls[queue->front]);
         queue->front++;
         queue->count--;
     }
@@ -267,13 +267,16 @@ int main(int argc, char **argv)
     frontier->front = 0;
     frontier->rear = 0;
     frontier->count = 0;
+    //array and counter to deal with memory allocated by urls returned by dequeue
+    char *dq_array[1000];
+    int dq_count = 0;
 
     ENTRY hurl;
     RECV_BUF *recv_buf[num_connections];
     for (int i = 0; i < num_connections; i++)
     {
         recv_buf_init(&recv_buf[i], BUF_SIZE);
-        free(recv_buf[i]->buf);
+        //free(recv_buf[i]->buf);
     }
     //recv_buf_init(&recv_buf, BUF_SIZE);
     int concount = 0, index = 0;
@@ -285,6 +288,7 @@ int main(int argc, char **argv)
     int msgs_left = 0;
     int http_status_code;
     int find_index = 0;
+    //char *newUrl;
     //const char *szUrl;
 
     curl_global_init(CURL_GLOBAL_ALL);
@@ -294,6 +298,7 @@ int main(int argc, char **argv)
     //initialize the curl for seedurl
     index = find_empty_index(recv_buf, num_connections);
     //printf("%d\n", index);
+    free(recv_buf[index]->buf);
     init(cm, seedurl, recv_buf[index], index);
     concount++;
     hurl.key = seedurl;
@@ -378,6 +383,7 @@ int main(int argc, char **argv)
                     // /printf("in while\n");
                     //printf("count = %d\n", frontier->count);
                     char *newUrl = dequeue(frontier);
+                    dq_array[dq_count++] = newUrl;
                     //printf("%s\n", newUrl);
                     //not in ht = not searched yet, so add to multi curl
                     hurl.key = newUrl;
@@ -388,7 +394,7 @@ int main(int argc, char **argv)
 
                         //add new curl with new url
                         index = find_empty_index(recv_buf, num_connections);
-                        printf("index = %d\n", index);
+                        //printf("index = %d\n", index);
                         free(recv_buf[index]->buf);
                         init(cm, newUrl, recv_buf[index], index);
                         concount++;
@@ -400,16 +406,19 @@ int main(int argc, char **argv)
         }
         //printf("still running = %d\n", still_running);
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
+    printf("OOTL\n");
     for (int i = 0; i < num_connections; i++)
     {
-        if (recv_buf[i]->buf)
-        {
-            recv_buf_cleanup(recv_buf[i]);
-        }
+        recv_buf_cleanup(recv_buf[i]);
     }
-    for (int i = frontier->front; i <= frontier->rear; i++)
+    for (int i = 0; i < frontier->rear; i++)
     {
         free(frontier->urls[i]);
+    }
+    free(frontier);
+    for (int i = 0; i < dq_count; i++)
+    {
+        free(dq_array[i]);
     }
     curl_multi_cleanup(cm);
     curl_global_cleanup();

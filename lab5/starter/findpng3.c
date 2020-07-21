@@ -389,6 +389,7 @@ int main(int argc, char **argv)
                         //add new curl with new url
                         index = find_empty_index(recv_buf, num_connections);
                         printf("index = %d\n", index);
+                        free(recv_buf[index]->buf);
                         init(cm, newUrl, recv_buf[index], index);
                         concount++;
                     }

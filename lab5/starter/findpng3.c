@@ -145,7 +145,7 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    printf("check: %s\n", checkurl);
+    // printf("check: %s\n", checkurl);
 
     if (strcmp(logfile, ""))
     {
@@ -156,12 +156,14 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
         fputs("\n", log);
         fclose(log);
     }
-    //printf("link: %s, type: %s\n", checkurl, ct);
-    //printf("%s\n", p_recv_buf->buf);
-    //printf("%lu\n", p_recv_buf->size);
+    // printf("link: %s, type: %s\n", checkurl, ct);
+    // printf("%s\n", p_recv_buf->buf);
+    // printf("%lu\n", p_recv_buf->size);
     if (strstr(ct, CT_HTML))
     {
+        // printf("before\n");
         find_http(p_recv_buf->buf, p_recv_buf->size, 1, checkurl, curl_handle);
+        // printf("after\n");
     }
     else if (strstr(ct, CT_PNG))
     {
@@ -200,6 +202,7 @@ static void init(CURLM *cm, char *url, RECV_BUF *p_recv_buf)
     curl_easy_setopt(eh, CURLOPT_PRIVATE, (void *)p_recv_buf);
     curl_easy_setopt(eh, CURLOPT_VERBOSE, 0L);
     curl_multi_add_handle(cm, eh);
+    printf("Adding new handle with url %s\n", url);
 }
 
 int main(int argc, char **argv)
@@ -334,14 +337,16 @@ int main(int argc, char **argv)
                     RECV_BUF* ret_buf = NULL;
 
                     curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
-                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, ret_buf);
+                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, &ret_buf);
+                    curl_easy_recv(eh, ret_buf->buf, BUF_SIZE, &ret_buf->size);
 
                     if (http_status_code < 400)
                     {
-                        //printf("checking\n");
+                        // printf("checking\n");
                         check_link(eh, ret_buf);
-                        //printf("done check\n");
-                        recv_buf_cleanup(ret_buf);
+                        // printf("done check\n");
+                        // recv_buf_cleanup(&ret_buf);
+                        // printf("here\n");
                     }
                 }
                 //remove curl from multi handle
@@ -366,6 +371,7 @@ int main(int argc, char **argv)
                         
                         //add new curl with new url
                         RECV_BUF new_buf;
+                        // printf("please\n");
                         init(cm, newUrl, &new_buf);
                         concount++;
                     }
@@ -377,7 +383,7 @@ int main(int argc, char **argv)
         //printf("still running = %d\n", still_running);
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
 
-    recv_buf_cleanup(&recv_buf);
+    // recv_buf_cleanup(&recv_buf);
     curl_multi_cleanup(cm);
     curl_global_cleanup();
     printf("done\n");

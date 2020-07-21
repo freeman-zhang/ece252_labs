@@ -145,7 +145,7 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    // printf("check: %s\n", checkurl);
+    printf("check: %s\n", checkurl);
 
     if (strcmp(logfile, ""))
     {
@@ -156,14 +156,12 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
         fputs("\n", log);
         fclose(log);
     }
-    // printf("link: %s, type: %s\n", checkurl, ct);
-    // printf("%s\n", p_recv_buf->buf);
-    // printf("%lu\n", p_recv_buf->size);
+    //printf("link: %s, type: %s\n", checkurl, ct);
+    //printf("%s\n", p_recv_buf->buf);
+    //printf("%lu\n", p_recv_buf->size);
     if (strstr(ct, CT_HTML))
     {
-        // printf("before\n");
         find_http(p_recv_buf->buf, p_recv_buf->size, 1, checkurl, curl_handle);
-        // printf("after\n");
     }
     else if (strstr(ct, CT_PNG))
     {
@@ -191,18 +189,28 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
 
 #define CNT 4
 
-static void init(CURLM *cm, char *url, RECV_BUF *p_recv_buf)
+static void init(CURLM *cm, char *url, RECV_BUF *p_recv_buf, int index)
 {
     CURL *eh = easy_handle_init(p_recv_buf, url);
     //CURL *eh = curl_easy_init();
     // curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, cb);
     // curl_easy_setopt(eh, CURLOPT_HEADER, 0L);
     // curl_easy_setopt(eh, CURLOPT_URL, url);
-
-    curl_easy_setopt(eh, CURLOPT_PRIVATE, (void *)p_recv_buf);
+    curl_easy_setopt(eh, CURLOPT_PRIVATE, index);
     curl_easy_setopt(eh, CURLOPT_VERBOSE, 0L);
     curl_multi_add_handle(cm, eh);
-    printf("Adding new handle with url %s\n", url);
+}
+
+int find_empty_index(RECV_BUF *recv_array[], int num_connections)
+{
+    for (int i = 0; i < num_connections; i++)
+    {
+        if (recv_array[i]->size == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
 }
 
 int main(int argc, char **argv)
@@ -261,8 +269,14 @@ int main(int argc, char **argv)
     frontier->count = 0;
 
     ENTRY hurl;
-    RECV_BUF recv_buf;
-    int concount = 0;
+    RECV_BUF *recv_buf[num_connections];
+    for (int i = 0; i < num_connections; i++)
+    {
+        recv_buf_init(&recv_buf[i], BUF_SIZE);
+        free(recv_buf[i]->buf);
+    }
+    //recv_buf_init(&recv_buf, BUF_SIZE);
+    int concount = 0, index = 0;
     CURLM *cm = NULL;
     CURL *eh = NULL;
     CURLMsg *msg = NULL;
@@ -270,14 +284,17 @@ int main(int argc, char **argv)
     int still_running = 0;
     int msgs_left = 0;
     int http_status_code;
+    int find_index = 0;
+    //const char *szUrl;
 
     curl_global_init(CURL_GLOBAL_ALL);
 
     cm = curl_multi_init();
 
     //initialize the curl for seedurl
-
-    init(cm, seedurl, &recv_buf);
+    index = find_empty_index(recv_buf, num_connections);
+    //printf("%d\n", index);
+    init(cm, seedurl, recv_buf[index], index);
     concount++;
     hurl.key = seedurl;
     hsearch(hurl, ENTER);
@@ -307,7 +324,7 @@ int main(int argc, char **argv)
          }
         */
         //printf("a");
-        
+
         curl_multi_perform(cm, &still_running);
         while ((msg = curl_multi_info_read(cm, &msgs_left)))
         {
@@ -319,7 +336,7 @@ int main(int argc, char **argv)
                 //getting recv_buf using eh
                 //curl_easy_perform(eh);
                 //size_t bytes_read = 0;
-                curl_easy_recv(eh, &recv_buf.buf, BUF_SIZE, &recv_buf.size);
+                //curl_easy_recv(eh, &recv_buf.buf, BUF_SIZE, &recv_buf.size);
                 //printf("%s\n", recv_buf.buf);
                 return_code = msg->data.result;
 
@@ -334,22 +351,22 @@ int main(int argc, char **argv)
                 {
                     // Get HTTP status code
                     http_status_code = 0;
-                    RECV_BUF* ret_buf = NULL;
+                    //szUrl = NULL;
 
                     curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
-                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, &ret_buf);
-                    curl_easy_recv(eh, ret_buf->buf, BUF_SIZE, &ret_buf->size);
+                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, &find_index);
 
                     if (http_status_code < 400)
                     {
-                        // printf("checking\n");
-                        check_link(eh, ret_buf);
-                        // printf("done check\n");
-                        // recv_buf_cleanup(&ret_buf);
-                        // printf("here\n");
+                        //printf("checking\n");
+                        check_link(eh, recv_buf[find_index]);
+                        //printf("done check\n");
                     }
                 }
                 //remove curl from multi handle
+                recv_buf[find_index]->size = 0;
+                //free(recv_buf[find_index]->buf);
+                //free(recv_buf[find_index]);
                 curl_multi_remove_handle(cm, eh);
                 curl_easy_cleanup(eh);
                 concount--;
@@ -368,11 +385,11 @@ int main(int argc, char **argv)
                     {
                         //add to ht
                         hsearch(hurl, ENTER);
-                        
+
                         //add new curl with new url
-                        RECV_BUF new_buf;
-                        // printf("please\n");
-                        init(cm, newUrl, &new_buf);
+                        index = find_empty_index(recv_buf, num_connections);
+                        printf("index = %d\n", index);
+                        init(cm, newUrl, recv_buf[index], index);
                         concount++;
                     }
                     curl_multi_perform(cm, &still_running);
@@ -382,8 +399,17 @@ int main(int argc, char **argv)
         }
         //printf("still running = %d\n", still_running);
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
-
-    // recv_buf_cleanup(&recv_buf);
+    for (int i = 0; i < num_connections; i++)
+    {
+        if (recv_buf[i]->buf)
+        {
+            recv_buf_cleanup(recv_buf[i]);
+        }
+    }
+    for (int i = frontier->front; i <= frontier->rear; i++)
+    {
+        free(frontier->urls[i]);
+    }
     curl_multi_cleanup(cm);
     curl_global_cleanup();
     printf("done\n");

@@ -39,7 +39,7 @@ char *dequeue(char_queue_p queue)
         returl = malloc(strlen(queue->urls[queue->front]) + 1);
         strcpy(returl, queue->urls[queue->front]);
         //returl = strdup(queue->urls[queue->front]);
-        //free(queue->urls[queue->front]);
+        free(queue->urls[queue->front]);
         queue->front++;
         queue->count--;
     }
@@ -267,9 +267,10 @@ int main(int argc, char **argv)
     frontier->front = 0;
     frontier->rear = 0;
     frontier->count = 0;
-    //array and counter to deal with memory allocated by urls returned by dequeue
+    //array and counters to deal with memory allocated by urls returned by dequeue
     char *dq_array[1000];
     int dq_count = 0;
+    //int freed = 0;
 
     ENTRY hurl;
     RECV_BUF *recv_buf[num_connections];
@@ -399,23 +400,48 @@ int main(int argc, char **argv)
                         init(cm, newUrl, recv_buf[index], index);
                         concount++;
                     }
+                    else
+                    {
+                        free(dq_array[dq_count--]);
+                    }
                     curl_multi_perform(cm, &still_running);
                 }
                 //curl_multi_perform(cm, &still_running);
             }
         }
         //printf("still running = %d\n", still_running);
+        // if (freed < dq_count - 2 * num_connections)
+        // {
+        //     for (int i = freed; i < dq_count - num_connections; i++)
+        //     {
+        //         free(dq_array[freed++]);
+        //     }
+        // }
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
+
+    //wait for remaining curls to finish
+    // while (still_running)
+    // {
+    //     int numfds = 0;
+    //     curl_multi_wait(cm, NULL, 0, MAX_WAIT_MSECS, &numfds);
+    //     curl_multi_perform(cm, &still_running);
+    // }
+    // while ((msg = curl_multi_info_read(cm, &msgs_left)))
+    // {
+    //     curl_multi_remove_handle(cm, eh);
+    //     curl_easy_cleanup(eh);
+    // }
+
     printf("OOTL\n");
     for (int i = 0; i < num_connections; i++)
     {
         recv_buf_cleanup(recv_buf[i]);
     }
-    for (int i = 0; i < frontier->rear; i++)
+    for (int i = frontier->front; i < frontier->rear; i++)
     {
         free(frontier->urls[i]);
     }
-    free(frontier);
+    //free(frontier);
     for (int i = 0; i < dq_count; i++)
     {
         free(dq_array[i]);

@@ -6,6 +6,7 @@
 #include <curl/multi.h>
 #include <time.h>
 #include <search.h> /* for hcreate */
+#include <time.h>
 
 #include "cURL/curl_util.h"
 
@@ -35,10 +36,8 @@ char *dequeue(char_queue_p queue)
     char *returl = NULL;
     if (!empty(queue))
     {
-        //printf("count = %d\n",queue->count);
         returl = (char*)calloc(1, strlen(queue->urls[queue->front]) + 1);
         strcpy(returl, queue->urls[queue->front]);
-        //returl = strdup(queue->urls[queue->front]);
         free(queue->urls[queue->front]);
         queue->front++;
         queue->count--;
@@ -48,12 +47,8 @@ char *dequeue(char_queue_p queue)
 
 int enqueue(char_queue_p queue, char *url)
 {
-    //printf("count = %d\n",queue->count);
     queue->urls[queue->rear] = (char*)calloc(1, strlen(url) + 1);
     strcpy(queue->urls[queue->rear], url);
-    //queue->urls[queue->rear] = strdup(url);
-    //free(url);
-    //strcpy(queue->urls[queue->rear], url);
     queue->rear++;
     queue->count++;
     return 0;
@@ -78,7 +73,6 @@ int is_png(U8 *buf)
         return 0;
     }
     U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
-    //U8 header[8];
     int equal = 1;
     for (int i = 0; i < 8; i++)
     {
@@ -122,7 +116,6 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
             }
             if (href != NULL && !strncmp((const char *)href, "http", 4))
             {
-                //printf("href: %s\n", href);
                 //handling logic for what to do with link found
                 enqueue(frontier, (char *)href);
             }
@@ -132,7 +125,6 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
     }
     xmlFreeDoc(doc);
     xmlCleanupParser();
-    //printf("find done\n");
     return 0;
 }
 
@@ -149,7 +141,6 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    //printf("check: %s\n", checkurl);
 
     if (strcmp(logfile, ""))
     {
@@ -160,9 +151,6 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
         fputs("\n", log);
         fclose(log);
     }
-    //printf("link: %s, type: %s\n", checkurl, ct);
-    //printf("%s\n", p_recv_buf->buf);
-    //printf("%lu\n", p_recv_buf->size);
     if (strstr(ct, CT_HTML))
     {
         find_http(p_recv_buf->buf, p_recv_buf->size, 1, checkurl, curl_handle);
@@ -171,10 +159,8 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     {
         U8 *header;
         memcpy(&header, p_recv_buf, sizeof(header));
-        //printf("check: %s\n", checkurl);
         if (is_png(header))
         {
-            //printf("png yes \n");
             //write to png_urls.txt;
 
             if (png_count < num_pngs)
@@ -188,7 +174,6 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
             }
         }
     }
-    //printf("done check\n");
     return 0;
 }
 
@@ -197,10 +182,6 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
 static void init(CURLM *cm, char *url, RECV_BUF *p_recv_buf, int index)
 {
     CURL *eh = easy_handle_init(p_recv_buf, url);
-    //CURL *eh = curl_easy_init();
-    // curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, cb);
-    // curl_easy_setopt(eh, CURLOPT_HEADER, 0L);
-    // curl_easy_setopt(eh, CURLOPT_URL, url);
     curl_easy_setopt(eh, CURLOPT_PRIVATE, index);
     curl_easy_setopt(eh, CURLOPT_VERBOSE, 0L);
     curl_multi_add_handle(cm, eh);
@@ -251,6 +232,10 @@ int main(int argc, char **argv)
             return -1;
         }
     }
+
+    struct timeval begin, end;
+    gettimeofday(&begin, NULL);
+
     //seedurl by taking last arg
     char *seedurl = argv[argc - 1];
 
@@ -275,7 +260,6 @@ int main(int argc, char **argv)
     //array and counters to deal with memory allocated by urls returned by dequeue
     char *dq_array[1000];
     int dq_count = 0;
-    //int freed = 0;
 
     ENTRY hurl;
     RECV_BUF *recv_buf[num_connections];
@@ -283,8 +267,6 @@ int main(int argc, char **argv)
     for (int i = 0; i < num_connections; i++)
     {
         recv_buf_init(&array_buf[i], BUF_SIZE);
-        //recv_buf_init(recv_buf[i], BUF_SIZE);
-        //free(recv_buf[i]->buf);
         recv_buf[i] = &array_buf[i];
         recv_buf[i]->taken = 0;
     }
@@ -298,8 +280,6 @@ int main(int argc, char **argv)
     int msgs_left = 0;
     int http_status_code;
     int find_index = 0;
-    //char *newUrl;
-    //const char *szUrl;
 
     curl_global_init(CURL_GLOBAL_ALL);
 
@@ -307,8 +287,6 @@ int main(int argc, char **argv)
 
     //initialize the curl for seedurl
     index = find_empty_index(recv_buf, num_connections);
-    //printf("%d\n", index);
-    //free(recv_buf[index]->buf);
     recv_buf_cleanup(recv_buf[index]);
     init(cm, seedurl, recv_buf[index], index);
     concount++;
@@ -339,29 +317,18 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
          }
         */
-        //printf("a");
 
         curl_multi_perform(cm, &still_running);
         while ((msg = curl_multi_info_read(cm, &msgs_left)))
         {
-            //printf("in while\n");
-            //printf("msg left = %d\n", msgs_left);
             if (msg->msg == CURLMSG_DONE)
             {
                 eh = msg->easy_handle;
                 //getting recv_buf using eh
-                //curl_easy_perform(eh);
-                //size_t bytes_read = 0;
-                //curl_easy_recv(eh, &recv_buf.buf, BUF_SIZE, &recv_buf.size);
-                //printf("%s\n", recv_buf.buf);
                 return_code = msg->data.result;
 
                 if (return_code != CURLE_OK)
                 {
-
-                    //fprintf(stderr, "CURL error code: %d\n", msg->data.result);
-                    //continue;
-                    //printf("not ok\n");
                     char * badurl;
                     curl_easy_getinfo(eh, CURLINFO_EFFECTIVE_URL, &badurl);
                     curl_easy_getinfo(eh, CURLINFO_PRIVATE, &find_index);
@@ -386,35 +353,25 @@ int main(int argc, char **argv)
                 {
                     // Get HTTP status code
                     http_status_code = 0;
-                    //szUrl = NULL;
 
                     curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_status_code);
                     curl_easy_getinfo(eh, CURLINFO_PRIVATE, &find_index);
 
                     if (http_status_code < 400)
                     {
-                        //printf("checking\n");
                         check_link(eh, recv_buf[find_index]);
-                        //printf("done check\n");
                     }
                 }
                 //remove curl from multi handle
                 recv_buf[find_index]->taken = 0;
-                //free(recv_buf[find_index]->buf);
-                //free(recv_buf[find_index]);
                 curl_multi_remove_handle(cm, eh);
                 curl_easy_cleanup(eh);
                 concount--;
-                //printf("%d\n", concount);
                 //add new curls to multi handle
-                //printf("empty = %d\n", empty(frontier));
                 while (concount < num_connections && !empty(frontier))
                 {
-                    // /printf("in while\n");
-                    //printf("count = %d\n", frontier->count);
                     char *newUrl = dequeue(frontier);
                     dq_array[dq_count++] = newUrl;
-                    //printf("%s\n", newUrl);
                     //not in ht = not searched yet, so add to multi curl
                     hurl.key = newUrl;
                     if (hsearch(hurl, FIND) == NULL)
@@ -424,8 +381,6 @@ int main(int argc, char **argv)
 
                         //add new curl with new url
                         index = find_empty_index(recv_buf, num_connections);
-                        //printf("index = %d\n", index);
-                        //free(recv_buf[index]->buf);
                         recv_buf_cleanup(recv_buf[index]);
                         init(cm, newUrl, recv_buf[index], index);
                         concount++;
@@ -436,33 +391,11 @@ int main(int argc, char **argv)
                     }
                     curl_multi_perform(cm, &still_running);
                 }
-                //curl_multi_perform(cm, &still_running);
             }
         }
-        //printf("still running = %d\n", still_running);
-        // if (freed < dq_count - 2 * num_connections)
-        // {
-        //     for (int i = freed; i < dq_count - num_connections; i++)
-        //     {
-        //         free(dq_array[freed++]);
-        //     }
-        // }
     } while ((still_running || !empty(frontier)) && png_count < num_pngs);
 
-    //wait for remaining curls to finish
-    // while (still_running)
-    // {
-    //     int numfds = 0;
-    //     curl_multi_wait(cm, NULL, 0, MAX_WAIT_MSECS, &numfds);
-    //     curl_multi_perform(cm, &still_running);
-    // }
-    // while ((msg = curl_multi_info_read(cm, &msgs_left)))
-    // {
-    //     curl_multi_remove_handle(cm, eh);
-    //     curl_easy_cleanup(eh);
-    // }
-
-    printf("OOTL, png count = %d\n", png_count);
+    // printf("OOTL, png count = %d\n", png_count);
     for (int i = 0; i < num_connections; i++)
     {
         recv_buf_cleanup(recv_buf[i]);
@@ -479,6 +412,10 @@ int main(int argc, char **argv)
     curl_multi_cleanup(cm);
     curl_global_cleanup();
     hdestroy();
-    printf("done\n");
+
+    gettimeofday(&end, NULL);
+    double elapsed = (end.tv_sec - begin.tv_sec) + ((end.tv_usec - begin.tv_usec)/1000000.0);
+    printf("findpng3 execution time: %6lf seconds\n", elapsed);
+
     return EXIT_SUCCESS;
 }

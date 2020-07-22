@@ -18,6 +18,7 @@ typedef struct recv_buf
     size_t max_size; /* max capacity of buf in bytes*/
     int seq;         /* >=0 sequence number extracted from http header */
                      /* <0 indicates an invalid seq number */
+    int taken;
 } RECV_BUF;
 
 size_t

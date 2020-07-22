@@ -171,6 +171,7 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     {
         U8 *header;
         memcpy(&header, p_recv_buf, sizeof(header));
+        //printf("check: %s\n", checkurl);
         if (is_png(header))
         {
             //printf("png yes \n");
@@ -209,7 +210,7 @@ int find_empty_index(RECV_BUF *recv_array[], int num_connections)
 {
     for (int i = 0; i < num_connections; i++)
     {
-        if (recv_array[i]->size == 0)
+        if (!recv_array[i]->taken)
         {
             return i;
         }
@@ -285,6 +286,7 @@ int main(int argc, char **argv)
         //recv_buf_init(recv_buf[i], BUF_SIZE);
         //free(recv_buf[i]->buf);
         recv_buf[i] = &array_buf[i];
+        recv_buf[i]->taken = 0;
     }
     //recv_buf_init(&recv_buf, BUF_SIZE);
     int concount = 0, index = 0;
@@ -359,6 +361,25 @@ int main(int argc, char **argv)
 
                     //fprintf(stderr, "CURL error code: %d\n", msg->data.result);
                     //continue;
+                    //printf("not ok\n");
+                    char * badurl;
+                    curl_easy_getinfo(eh, CURLINFO_EFFECTIVE_URL, &badurl);
+                    curl_easy_getinfo(eh, CURLINFO_PRIVATE, &find_index);
+                    hurl.key = badurl;
+                     if (hsearch(hurl, FIND) == NULL)
+                    {
+                        //add to ht
+                        hsearch(hurl, ENTER);
+                            if (strcmp(logfile, ""))
+                            {
+                             //write to logfile;
+                            FILE *log;
+                            log = fopen(logfile, "a");
+                            fputs(seedurl, log);
+                            fputs("\n", log);
+                            fclose(log);
+                        }
+                    }
                 }
                 //if webpage doesnt error out
                 else
@@ -378,7 +399,7 @@ int main(int argc, char **argv)
                     }
                 }
                 //remove curl from multi handle
-                recv_buf[find_index]->size = 0;
+                recv_buf[find_index]->taken = 0;
                 //free(recv_buf[find_index]->buf);
                 //free(recv_buf[find_index]);
                 curl_multi_remove_handle(cm, eh);
@@ -457,6 +478,7 @@ int main(int argc, char **argv)
     }
     curl_multi_cleanup(cm);
     curl_global_cleanup();
+    hdestroy();
     printf("done\n");
     return EXIT_SUCCESS;
 }

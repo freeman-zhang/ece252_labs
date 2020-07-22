@@ -70,6 +70,7 @@ int recv_buf_init(RECV_BUF *ptr, size_t max_size)
 
     ptr->buf = p;
     ptr->size = 0;
+    ptr->taken = 1;
     ptr->max_size = max_size;
     ptr->seq = -1; /* valid seq should be non-negative */
     return 0;
@@ -85,6 +86,7 @@ int recv_buf_cleanup(RECV_BUF *ptr)
     free(ptr->buf);
     ptr->size = 0;
     ptr->max_size = 0;
+    ptr->taken = 0;
     return 0;
 }
 

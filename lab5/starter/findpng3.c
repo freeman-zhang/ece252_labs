@@ -274,10 +274,13 @@ int main(int argc, char **argv)
 
     ENTRY hurl;
     RECV_BUF *recv_buf[num_connections];
+    RECV_BUF array_buf[num_connections];
     for (int i = 0; i < num_connections; i++)
     {
-        recv_buf_init(&recv_buf[i], BUF_SIZE);
+        recv_buf_init(&array_buf[i], BUF_SIZE);
+        //recv_buf_init(recv_buf[i], BUF_SIZE);
         //free(recv_buf[i]->buf);
+        recv_buf[i] = &array_buf[i];
     }
     //recv_buf_init(&recv_buf, BUF_SIZE);
     int concount = 0, index = 0;
@@ -402,7 +405,7 @@ int main(int argc, char **argv)
                     }
                     else
                     {
-                        free(dq_array[dq_count--]);
+                        free(dq_array[--dq_count]);
                     }
                     curl_multi_perform(cm, &still_running);
                 }

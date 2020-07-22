@@ -36,7 +36,7 @@ char *dequeue(char_queue_p queue)
     if (!empty(queue))
     {
         //printf("count = %d\n",queue->count);
-        returl = malloc(strlen(queue->urls[queue->front]) + 1);
+        returl = (char*)calloc(1, strlen(queue->urls[queue->front]) + 1);
         strcpy(returl, queue->urls[queue->front]);
         //returl = strdup(queue->urls[queue->front]);
         free(queue->urls[queue->front]);
@@ -49,7 +49,7 @@ char *dequeue(char_queue_p queue)
 int enqueue(char_queue_p queue, char *url)
 {
     //printf("count = %d\n",queue->count);
-    queue->urls[queue->rear] = malloc(strlen(url) + 1);
+    queue->urls[queue->rear] = (char*)calloc(1, strlen(url) + 1);
     strcpy(queue->urls[queue->rear], url);
     //queue->urls[queue->rear] = strdup(url);
     //free(url);
@@ -73,6 +73,10 @@ xmlXPathObjectPtr getnodeset(xmlDocPtr doc, xmlChar *xpath);
 //check is signature matches png
 int is_png(U8 *buf)
 {
+    if (buf == NULL)
+    {
+        return 0;
+    }
     U8 signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
     //U8 header[8];
     int equal = 1;
@@ -145,7 +149,7 @@ int check_link(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
     char *checkurl = NULL;
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &checkurl);
-    printf("check: %s\n", checkurl);
+    //printf("check: %s\n", checkurl);
 
     if (strcmp(logfile, ""))
     {
@@ -263,7 +267,7 @@ int main(int argc, char **argv)
     //htable
     hcreate(2000);
     //allocate memory for frontier
-    frontier = malloc(sizeof(frontier->urls));
+    frontier = calloc(1000, sizeof(char)*150);
     frontier->front = 0;
     frontier->rear = 0;
     frontier->count = 0;
@@ -302,7 +306,8 @@ int main(int argc, char **argv)
     //initialize the curl for seedurl
     index = find_empty_index(recv_buf, num_connections);
     //printf("%d\n", index);
-    free(recv_buf[index]->buf);
+    //free(recv_buf[index]->buf);
+    recv_buf_cleanup(recv_buf[index]);
     init(cm, seedurl, recv_buf[index], index);
     concount++;
     hurl.key = seedurl;
@@ -399,7 +404,8 @@ int main(int argc, char **argv)
                         //add new curl with new url
                         index = find_empty_index(recv_buf, num_connections);
                         //printf("index = %d\n", index);
-                        free(recv_buf[index]->buf);
+                        //free(recv_buf[index]->buf);
+                        recv_buf_cleanup(recv_buf[index]);
                         init(cm, newUrl, recv_buf[index], index);
                         concount++;
                     }
@@ -435,7 +441,7 @@ int main(int argc, char **argv)
     //     curl_easy_cleanup(eh);
     // }
 
-    printf("OOTL\n");
+    printf("OOTL, png count = %d\n", png_count);
     for (int i = 0; i < num_connections; i++)
     {
         recv_buf_cleanup(recv_buf[i]);
